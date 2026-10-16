@@ -1,4 +1,4 @@
-## Interface: 11509, 20506, 16001
+## Interface: 30300
 ## Title: Spoken Books
 ## Notes: Books, letters and notes read aloud through Spoken.
 ## Notes-deDE: Bücher, Briefe und Notizen werden über Spoken vorgelesen.
@@ -27,10 +27,11 @@
 ## Group: Spoken
 ## X-License: Addon code MIT. Book text is Blizzard's, extracted from the game.
 
+Bootstrap.lua
+LocaleTest.lua
 Checksum.lua
-Data/Books.lua
-Data/Places.lua
-Locale/enUS.lua
+BooksData.lua
+PlacesData.lua
 Locale/deDE.lua
 Locale/esES.lua
 Locale/frFR.lua
@@ -46,7 +47,7 @@ Contribute.lua
 Audio.lua
 Playlist.lua
 UI/Layout.lua
-UI/Options.lua
+OptionsUI.lua
 UI/PlayButton.lua
 UI/CopyLink.lua
 UI/TextView.lua

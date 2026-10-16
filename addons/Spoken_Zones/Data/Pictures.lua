@@ -5,7 +5,7 @@
 -- subzone name, with "" for the zone itself. Each is { texture, mask }: the picture under
 -- Textures/Pictures and which of its edge masks (Mask1..Mask32) cuts it.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 SpokenZones.pictures = {
 	[947] = {

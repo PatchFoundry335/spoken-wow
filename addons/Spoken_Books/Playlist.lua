@@ -12,7 +12,8 @@
 -- skips the rest of it. A page with more to follow `continues`: only the book's own gap after
 -- it, not the pause and cue between lines.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 --- The pages of a book from `pageId` onwards, in reading order.
 function SpokenBooks:PagesFrom(pageId)
@@ -194,7 +195,9 @@ function SpokenBooks:PlayFrom(pageId, browsing)
 			local clip = self:ClipFor(id)
 			if clip then
 				Follow(clip)
-				if Taken(source:Enqueue(clip), clip) then
+				local accepted, reason = source:Enqueue(clip)
+
+                if Taken(accepted, clip) then
 					queued = queued + 1
 					first = first or clip
 				end

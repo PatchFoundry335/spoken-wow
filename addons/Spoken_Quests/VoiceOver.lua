@@ -491,7 +491,17 @@ function Addon:PromptForPlayer()
 end
 
 function Addon:OnInitialize()
-    self.db = LibStub("AceDB-3.0"):New("SpokenQuestsSettings", defaults)
+
+    local db = LibStub("AceDB-3.0"):New("SpokenQuestsSettings", defaults)
+
+
+    self.db = db
+
+    if not self.db then
+        print("|cffff0000SpokenQuests: AceDB returned nil!|r")
+        return
+    end
+
     self.db.RegisterCallback(self, "OnProfileChanged", "RefreshConfig")
     self.db.RegisterCallback(self, "OnProfileReset", "RefreshConfig")
 

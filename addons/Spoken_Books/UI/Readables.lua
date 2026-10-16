@@ -10,7 +10,8 @@
 -- not found yet is listed greyed, with a padlock, and does not open, unless Unlock Unfound
 -- Readables is on. On the right its pages, on parchment, with where it comes from and Play.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 local L = SpokenBooks.L
 

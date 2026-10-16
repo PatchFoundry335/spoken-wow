@@ -39,7 +39,8 @@
 -- re-labelling what is already here is the honest arrangement rather than a second control
 -- stacked on space that does not exist.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 local L = SpokenBooks.L
 
 local BUTTON_WIDTH = 58

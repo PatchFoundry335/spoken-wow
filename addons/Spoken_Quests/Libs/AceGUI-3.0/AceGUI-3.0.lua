@@ -61,10 +61,18 @@ local function errorhandler(err)
 	return geterrorhandler()(err)
 end
 
+-- Lua 5.1 compatibility: xpcall does not forward arguments.
 local function safecall(func, ...)
-	if func then
-		return xpcall(func, errorhandler, ...)
-	end
+    if not func then
+        return
+    end
+
+    local args = { ... }
+    local count = select("#", ...)
+
+    return xpcall(function()
+        return func(unpack(args, 1, count))
+    end, errorhandler)
 end
 
 -- Recycling functions

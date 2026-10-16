@@ -1,4 +1,4 @@
-local _, SpokenBooks = ...
+local SpokenBooks = _G.SpokenBooks
 
 -- Traditional Chinese interface strings for Spoken Books.
 --

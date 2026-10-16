@@ -10,7 +10,8 @@
 -- or not anyone has read it aloud, and a report on a line with no voiceover is
 -- one of the more useful kinds.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local L = SpokenZones.L
 

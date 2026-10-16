@@ -20,7 +20,7 @@
 --   Audio.lua            the player menu entries and settings link
 --   Core.lua             the /spz command list
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 local L = {}
 

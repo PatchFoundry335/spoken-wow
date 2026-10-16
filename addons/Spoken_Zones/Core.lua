@@ -2,7 +2,8 @@
 -- Client targets: WoW Classic Era 1.15.9 (11509) and Anniversary 2.5.6 (20506).
 -- The two share a uiMapID space, so nothing here branches on the client.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 -- C_AddOns is the modern home of GetAddOnMetadata; the global is the older one.
 -- Reading through whichever exists costs a line and removes a whole class of
@@ -48,7 +49,7 @@ local defaults = {
 	-- Off, because it replaces the client's own record of what a character has
 	-- discovered with one SpokenZones keeps itself. Only a character who explored
 	-- before installing the addon needs that; see Autoplay.lua.
-	autoplayExplored = false,
+	autoplayExplored = true,
 	-- Off, so Read means "read along". Stopping discards the queue as well, which
 	-- is not something to do to a player who only wanted to see the words.
 	-- Off, so a player cannot end up reading an unfinished translation without
@@ -152,22 +153,44 @@ end
 
 -- The uiMapID the player is physically standing in.
 function SpokenZones:GetPlayerMapID()
-	return C_Map.GetBestMapForUnit("player")
+    -- Retail client
+    if C_Map and C_Map.GetBestMapForUnit then
+        return C_Map.GetBestMapForUnit("player")
+    end
+
+    -- WotLK 3.3.5a: resolve zone names against loaded lore.
+    local zoneName = GetRealZoneText()
+    if not zoneName or zoneName == "" then
+        return nil
+    end
+
+    -- Prefer an exact match.
+    for mapID, entry in pairs(self.Zones or {}) do
+        if entry.name == zoneName then
+            return mapID
+        end
+    end
+
+    return nil
 end
 
 -- Prefer the client's own zone name over the name baked into the generated data,
 -- so Era-specific naming (e.g. "The Barrens" rather than retail's "Northern
 -- Barrens") is always correct regardless of what the wiki page was titled.
 function SpokenZones:GetMapName(mapID)
-	if not mapID then
-		return nil
-	end
-	local info = C_Map.GetMapInfo(mapID)
-	if info and info.name and info.name ~= "" then
-		return info.name
-	end
-	local entry = self.Zones[mapID]
-	return entry and entry.name or nil
+        if not mapID then
+                return nil
+        end
+
+        if C_Map and C_Map.GetMapInfo then
+                local info = C_Map.GetMapInfo(mapID)
+                if info and info.name and info.name ~= "" then
+                        return info.name
+                end
+        end
+
+        local entry = self.Zones and self.Zones[mapID]
+        return entry and entry.name or nil
 end
 
 -- A place the client can name that nobody has written about yet. The corpus ships these
@@ -456,9 +479,12 @@ local function SetupHooks()
 
 	-- Map is showing a different zone. Covers both player-driven navigation and
 	-- programmatic SetMapID calls; OnMapChanged is the single funnel for both.
-	hooksecurefunc(WorldMapFrame, "OnMapChanged", function()
-		Dispatch(SpokenZones.mapChangedCallbacks, WorldMapFrame.mapID)
-	end)
+	-- Retail uses WorldMapFrame:OnMapChanged; WotLK does not.
+    if WorldMapFrame and type(WorldMapFrame.OnMapChanged) == "function" then
+        hooksecurefunc(WorldMapFrame, "OnMapChanged", function()
+            Dispatch(SpokenZones.mapChangedCallbacks, WorldMapFrame.mapID)
+        end)
+    end
 
 	WorldMapFrame:HookScript("OnShow", function()
 		Dispatch(SpokenZones.mapChangedCallbacks, WorldMapFrame.mapID)

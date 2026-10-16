@@ -7,7 +7,8 @@
 -- Other art is looked up first (C_Texture.GetAtlasInfo), and a client without it gets a plainer
 -- piece in its place -- a missing atlas draws nothing at all, which is worse than plain.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local L = SpokenZones.L
 

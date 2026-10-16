@@ -5,7 +5,8 @@
 -- itself and a default would fight it -- except for seeding minimapPos once, so
 -- the button starts somewhere sensible instead of at angle 0.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local ICON = "Interface\\ICONS\\INV_Misc_Book_09"
 

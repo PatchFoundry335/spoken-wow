@@ -4,7 +4,7 @@
 -- Lore of Azeroth leaves them out on any other client, which can never report them. Keyed as
 -- Subzones.lua is: uiMapID, then the normalised area name.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 SpokenZones.ForeverOnlyAreas = {
 	[1412] = {

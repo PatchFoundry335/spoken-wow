@@ -9,7 +9,8 @@
 -- Settings API's, and a client that does not offer one must still leave the addon
 -- configurable. /spb is what the Print below points at when that happens.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 local L = SpokenBooks.L
 

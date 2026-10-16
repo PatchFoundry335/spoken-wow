@@ -309,10 +309,21 @@ end
 
 function Transcript:Reflow()
     if not self.measure or not self.labels then return end
+
+    -- 3.3.5a: The frame may not have its layout dimensions yet.
+    -- Don't wrap text against a zero-width frame.
+    if not self.frame or self.frame:GetWidth() <= 1 then
+        self.needsReflow = true
+        return
+    end
+
+    self.needsReflow = false
+
     local button = self.expand:IsShown() and BUTTON_SIZE + GAP or 0
     local available = math.max(1, self.frame:GetWidth() - button)
     local paragraphs = self.style and self.style.paragraphs
-    local width = math.max(1, available - 2) -- Leave room for glyph rounding.
+    local width = math.max(1, available - 50) -- Extra safety margin for WotLK 3.3.5a font rendering.
+
     self.lines, self.segments = {}, {}
     local line, lineText
     local function NewLine()
@@ -342,13 +353,23 @@ function Transcript:Reflow()
             segment.index = #self.segments
             line[#line + 1] = segment
             lineText = lineText .. prefix .. text
+            if self:TextWidth(lineText) > width then
+                print("OVERFLOW:", self:TextWidth(lineText), "LIMIT:", width, "TEXT:", lineText)
+            end
         end
     end
-    for _, label in ipairs(self.labels) do label:SetWidth(available) end
+    -- WotLK 3.3.5a: The client automatically truncates FontStrings
+    -- constrained to the exact caption width, adding unwanted "...".
+    -- Our Reflow() logic already splits text into correctly sized lines,
+    -- so give the labels extra rendering room.
+    for _, label in ipairs(self.labels) do
+        label:SetWidth(math.max(600, available))
+    end
     self.topTarget = self:Snap(self.topTarget or 1)
     self.top = Clamp(self.top or self.topTarget, 1, self:MaxTop())
     self.renderedKey, self.placedKey = nil, nil
     self:Render()
+
 end
 
 function Transcript:PageCount()
@@ -424,6 +445,7 @@ function Transcript:Render()
     local progress = self:GetProgress()
     local segment = self:ActiveSegment(progress)
     local n, mode = LineCount(), Mode()
+
     local following = mode ~= "off" and not self.manualScroll
     if following then self.topTarget = segment and self:TargetFor(segment.line) or 1 end
     self.topTarget = self:Snap(self.topTarget or 1)
@@ -509,7 +531,11 @@ function Transcript:Place()
         label:ClearAllPoints()
         label:SetPoint("TOPLEFT", 0, -((padTop or 0) + ((row - 1) - fraction) * step))
         local line = self.lines and self.lines[first + row - 1]
-        label:SetShown(line ~= nil and (row <= n or (row == n + 1 and fraction > 0)))
+        if line ~= nil and (row <= n or (row == n + 1 and fraction > 0)) then
+            label:Show()
+        else
+            label:Hide()
+        end
         -- As much of the row as is inside the clipped frame, so a line half past an edge does not
         -- end on a hard cut.
         label:SetAlpha(row == 1 and 1 - fraction or row == n + 1 and fraction or 1)
@@ -591,14 +617,25 @@ function Transcript:Dock(parent, anchor, point, x, y, width, height)
     self.frame:ClearAllPoints()
     self.frame:SetPoint("TOPLEFT", anchor, point, x, y)
     self.frame:SetSize(width, height)
-    self.frame:SetShown(height > 0)
-    if changed then self:Reflow() end
+    if height > 0 then
+        self.frame:Show()
+    else
+        self.frame:Hide()
+    end
+    if changed or self.needsReflow then
+        self:Reflow()
+    end
 end
 
 function Transcript:Update()
     if not self.frame or self.held then return end
     self:Render()
-    self.frame:SetShown(Config().Enabled and Addon:DisplayStyle() ~= "subtitle" and self.clip ~= nil and self.text ~= "")
+    if Config().Enabled and Addon:DisplayStyle() ~= "subtitle"
+        and self.clip ~= nil and self.text ~= "" then
+        self.frame:Show()
+    else
+        self.frame:Hide()
+    end
     Subtitle:Update()
 end
 
@@ -655,7 +692,11 @@ function Transcript:RefreshConfig()
     local glyph = [[Interface\Buttons\UI-]] .. (Expanded() and "Minus" or "Plus")
     self.expand:SetNormalTexture(glyph .. "Button-Up")
     self.expand:SetPushedTexture(glyph .. "Button-Down")
-    self.expand:SetShown(style.lines == nil)
+    if style.lines == nil then
+        self.expand:Show()
+    else
+        self.expand:Hide()
+    end
     -- A skin's page may be taller than the expanded eight lines; one label more than the
     -- page, for the line sliding in mid-glide.
     for row = #self.labels + 1, LineCount() + 1 do self.labels[row] = Label(self.frame) end
@@ -691,6 +732,13 @@ end
 function Label(parent)
     local label = parent:CreateFontString(nil, "OVERLAY")
     label:SetFont(GameFontNormal:GetFont(), 16, "")
+    -- Legacy WotLK: explicitly disable automatic truncation if supported.
+    if label.SetMaxLines then
+        label:SetMaxLines(0)
+    end
+    if label.SetIndentedWordWrap then
+        label:SetIndentedWordWrap(false)
+    end
     label:SetTextColor(.88, .84, .76)
     label:SetShadowColor(0, 0, 0, 1)
     label:SetShadowOffset(1, -1)
@@ -704,6 +752,7 @@ function Transcript:Initialize()
     if self.frame then return end
     local frame = CreateFrame("Button", "SpokenTranscriptFrame", PlayerFrame.frame)
     self.frame = frame
+    frame:SetAlpha(1)
     self.lines, self.words, self.segments = {}, {}, {}
     frame:Hide()
     frame:EnableMouseWheel(true)

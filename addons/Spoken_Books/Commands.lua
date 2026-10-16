@@ -1,7 +1,8 @@
 -- /spokenbooks and /spb, matching /spoken and /sp on the player, /spokenquests and /spq,
 -- and /spokenzones and /spz.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 local function Print(message, ...)
 	local text = select("#", ...) > 0 and format(message, ...) or message

@@ -241,11 +241,11 @@ local function Build(canvas)
     -- legacy window grows to fit its rows instead (FitWindow), so it keeps laying out on
     -- the panel itself and never meets a ScrollFrame on a client that has not been tried.
     local host = panel
-    if canvas then
-        scroller = Layout.Scroll(panel)
-        host = scroller.child
-        panel.content = host
-    end
+
+    -- Use the existing scrolling layout on legacy clients too.
+    scroller = Layout.Scroll(panel)
+    host = scroller.child
+    panel.content = host
     local cfg = function() return Addon.db.profile.Frame end
     local audio = function() return Addon.db.profile.Audio end
     local transcript = function() return Addon.db.profile.Transcript end
@@ -1053,7 +1053,26 @@ function Options:Setup()
         -- No Settings API: a window of our own, opened by /spoken options. Sized to its
         -- rows, which vary by client, rather than a fixed height the rows can outgrow.
         panel.isWindow = true
-        panel:SetSize(420, 360)
+        panel:SetSize(650, 550)
+
+        -- Traditional WoW 3.3.5a window background and border.
+        panel:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true,
+            tileSize = 32,
+            edgeSize = 32,
+            insets = {
+                left = 11,
+                right = 12,
+                top = 12,
+                bottom = 11
+            }
+        })
+        panel:SetBackdropColor(0, 0, 0, 1)
+        if scroller then
+            scroller:Recalculate()
+        end
         FitWindow()
         panel:SetPoint("CENTER")
         panel:SetMovable(true)

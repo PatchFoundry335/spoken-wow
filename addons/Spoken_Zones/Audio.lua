@@ -22,7 +22,8 @@
 -- When several packs are installed the player picks one; unpicked,
 -- the language being read wins, then the client's own locale.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local L = SpokenZones.L
 

@@ -27,7 +27,8 @@
 -- run. Removing that .toc line does not error; it silently pins every player to
 -- English.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 -- Every locale a Classic Era or Anniversary client can run in, plus the
 -- languages a community translates into that no client ships (`client = false`:

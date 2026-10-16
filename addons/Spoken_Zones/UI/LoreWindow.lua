@@ -12,7 +12,8 @@
 -- hundred rows -- few enough that every row can be a real button. A search shows every match
 -- instead, and is short by being a search.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local L = SpokenZones.L
 

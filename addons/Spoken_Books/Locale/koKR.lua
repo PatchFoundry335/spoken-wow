@@ -1,4 +1,4 @@
-local _, SpokenBooks = ...
+local SpokenBooks = _G.SpokenBooks
 
 -- Korean interface strings for Spoken Books.
 --

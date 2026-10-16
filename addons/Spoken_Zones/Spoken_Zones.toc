@@ -1,4 +1,4 @@
-## Interface: 11509, 20506, 16001
+## Interface: 30300
 ## Title: Spoken Zones
 ## Notes: Zone and subzone lore on the world map, read aloud through Spoken.
 ## Notes-deDE: Zonen- und Gebietslore auf der Weltkarte, vorgelesen durch Spoken.
@@ -35,12 +35,13 @@
 ## X-Credits: Lore text sourced from warcraft.wiki.gg contributors (CC BY-SA 4.0).
 
 embeds.xml
+Bootstrap.lua
 
 # Data/Languages.lua first: it is what Language.lua reads to decide which
 # language is being read, and everything after that guards itself on the answer.
 Data/Languages.lua
 Language.lua
-Locale/enUS.lua
+Locale_enUS.lua
 Locale/deDE.lua
 Locale/esES.lua
 Locale/frFR.lua
@@ -54,8 +55,8 @@ Audio.lua
 Contribute.lua
 Autoplay.lua
 Discovery.lua
-Data/enUS/Zones.lua
-Data/enUS/Subzones.lua
+ZonesData_enUS.lua
+SubzonesData_enUS.lua
 # Keep the selected lore and caption text for installed voices. Other languages return early.
 Data/deDE/Zones.lua
 Data/deDE/Subzones.lua
@@ -98,4 +99,4 @@ UI/MapHighlight.lua
 UI/Compendium.lua
 UI/LoreWindow.lua
 UI/MinimapButton.lua
-UI/Options.lua
+OptionsUI.lua

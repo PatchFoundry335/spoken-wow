@@ -14,7 +14,8 @@
 --   3. nothing                          -- silently, because the alternative is reading the
 --                                          wrong page's words aloud
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 --- Whether the frame is showing mail rather than something the world wrote.
 ---

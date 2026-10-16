@@ -267,11 +267,11 @@ local function createButton(name, object, db)
 	button:SetHighlightTexture(136477) --"Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight"
 	local overlay = button:CreateTexture(nil, "OVERLAY")
 	overlay:SetSize(53, 53)
-	overlay:SetTexture(136430) --"Interface\\Minimap\\MiniMap-TrackingBorder"
+	overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder") --"Interface\\Minimap\\MiniMap-TrackingBorder"
 	overlay:SetPoint("TOPLEFT")
 	local background = button:CreateTexture(nil, "BACKGROUND")
 	background:SetSize(20, 20)
-	background:SetTexture(136467) --"Interface\\Minimap\\UI-Minimap-Background"
+	background:SetTexture("Interface\\Minimap\\UI-Minimap-Background") --"Interface\\Minimap\\UI-Minimap-Background"
 	background:SetPoint("TOPLEFT", 7, -5)
 	local icon = button:CreateTexture(nil, "ARTWORK")
 	icon:SetSize(17, 17)
@@ -300,10 +300,8 @@ local function createButton(name, object, db)
 	local animOut = button.fadeOut:CreateAnimation("Alpha")
 	animOut:SetOrder(1)
 	animOut:SetDuration(0.2)
-	animOut:SetFromAlpha(1)
-	animOut:SetToAlpha(0)
+	animOut:SetChange(-1)
 	animOut:SetStartDelay(1)
-	button.fadeOut:SetToFinalAlpha(true)
 
 	lib.objects[name] = button
 
@@ -573,10 +571,8 @@ for name, button in next, lib.objects do
 		local animOut = button.fadeOut:CreateAnimation("Alpha")
 		animOut:SetOrder(1)
 		animOut:SetDuration(0.2)
-		animOut:SetFromAlpha(1)
-		animOut:SetToAlpha(0)
+		animOut:SetChange(-1)
 		animOut:SetStartDelay(1)
-		button.fadeOut:SetToFinalAlpha(true)
 	end
 end
 lib:SetButtonRadius(lib.radius) -- Upgrade to 40

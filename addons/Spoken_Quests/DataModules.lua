@@ -558,6 +558,7 @@ function DataModules:GetNPCGossipTextHash(soundData)
 end
 
 local function getFirstNWords(text, n)
+    text = text or ""
     local firstNWords = {}
     local count = 0
 
@@ -573,6 +574,7 @@ local function getFirstNWords(text, n)
 end
 
 local function getLastNWords(text, n)
+    text = text or ""
     local lastNWords = {}
     local count = 0
 
@@ -603,7 +605,7 @@ function DataModules:GetQuestID(source, title, npcName, text)
 
     for _, module in self:GetModules() do
         local data = module.QuestIDLookup
-        if data then
+        if data and data[source] then
             local titleLookup = data[source][cleanedTitle]
             if titleLookup then
                 if type(titleLookup) == "number" then

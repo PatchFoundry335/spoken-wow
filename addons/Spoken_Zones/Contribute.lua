@@ -7,7 +7,8 @@
 --
 -- It travels the same format for one reason: one triage queue for three addons.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 -- The merged domain, not SpokenZones.SITE_URL ("https://lore.rusty.one", ReportButton.lua's
 -- own report domain): the contribute page is new and exists only on the site all three

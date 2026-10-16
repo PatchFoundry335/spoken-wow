@@ -9,7 +9,8 @@
 -- whatever another Spoken addon queued, and stopping here stops narration of a book rather
 -- than a quest line that happens to be speaking.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 local L = SpokenBooks.L
 

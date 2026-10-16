@@ -14,7 +14,8 @@
 -- The page id is the same in every language, so every pack names a page the same way and
 -- falling back is per page.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 -- Kept in step with SpokenZones.LOCALES (addons/Spoken_Zones/Language.lua): the addons sit
 -- side by side, and a language offered in one and missing from the other is a setting the

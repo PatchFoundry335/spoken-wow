@@ -6,7 +6,7 @@
 -- no source: that prose was written for this project.
 -- Page intros only, with post-vanilla sentences filtered out for Classic Era.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 if not SpokenZones:ShouldLoadLanguage("zhTW") then
 	return

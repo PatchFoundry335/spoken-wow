@@ -1,4 +1,8 @@
-local _, SpokenBooks = ...
+
+local _, namespace = ...
+
+_G.SpokenBooks = _G.SpokenBooks or namespace or {}
+local SpokenBooks = _G.SpokenBooks
 
 -- Interface strings for the Spoken Books options, book-frame buttons and player
 -- menu entries, and the key set every other language is measured against.
@@ -12,7 +16,7 @@ local _, SpokenBooks = ...
 -- English everywhere, as in the other Spoken addons.
 
 SpokenBooks.L = SpokenBooks.L or {}
-local L = SpokenBooks.L
+
 
 L.OPT_NOTE = "Books, letters, notes and plaques, read aloud when you open them."
 L.OPT_SECTION_READING = "When to Read"

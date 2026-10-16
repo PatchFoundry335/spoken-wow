@@ -12,7 +12,8 @@
 -- page the corpus has; a page it has never seen has no id to be named by, and gets one only if
 -- triage accepts it.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 --- The envelope for the page on screen, or nil when there is nothing to send.
 function SpokenBooks:CaptureContribution()

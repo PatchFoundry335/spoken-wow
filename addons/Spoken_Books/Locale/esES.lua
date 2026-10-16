@@ -1,4 +1,4 @@
-local _, SpokenBooks = ...
+local SpokenBooks = _G.SpokenBooks
 
 -- Spanish interface strings for Spoken Books.
 -- Covers both esES and esMX: nothing in these strings varies by region.

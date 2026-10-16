@@ -14,7 +14,8 @@
 -- at most points of a grid over its rectangle. What lights is then the overlay of the area a
 -- click at the cursor would open, never a neighbour's that happens to hold the cursor.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 -- How bright the lit area is.
 local HIGHLIGHT_ALPHA = 0.35

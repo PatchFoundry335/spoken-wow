@@ -17,7 +17,8 @@
 -- and the zone the character is in is scanned again whenever the list is drawn, so a discovery
 -- shows the next time Azeroth's Compendium is opened.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 -- Points asked about across each overlay's rectangle, this many a side: an overlay's rectangle
 -- can hold a smaller area of its own, which only some points land in.

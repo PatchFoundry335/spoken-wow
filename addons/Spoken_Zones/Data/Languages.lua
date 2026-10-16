@@ -8,7 +8,7 @@
 --
 -- Measured against English: 856 lore lines, 90 interface strings.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 SpokenZones.Languages = {
 	{ code = "enUS", lore = { done = 856, total = 856 }, strings = { done = 90, total = 90 }, aliases = 0, audio = true, ready = true },

@@ -759,7 +759,7 @@ if Version.IsLegacyVanilla or Version.IsLegacyBurningCrusade then
 
 end
 
-if Version.IsLegacyBurningCrusade or Version.IsLegacyWrath then
+if false and (Version.IsLegacyBurningCrusade or Version.IsLegacyWrath) then
     function Portrait:GetCurrentModelSet()
         return Addon.db.profile.Audio.LegacyHDModels and "HD" or "Original"
     end

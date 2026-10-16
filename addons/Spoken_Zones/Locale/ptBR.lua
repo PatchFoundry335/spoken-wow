@@ -5,7 +5,7 @@
 -- falls back to English at runtime, and the shortfall is what keeps this language
 -- out of the switcher -- see tools/locale/build-languages.mjs.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 if GetLocale() ~= "ptBR" then
 	return

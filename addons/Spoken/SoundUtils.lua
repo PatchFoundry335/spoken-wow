@@ -124,8 +124,14 @@ end
 ---@param channel string
 ---@return boolean exists
 function SoundUtils:TestSound(clip, channel)
+    if not StopSound then
+        -- Legacy clients cannot stop an individual sound by handle.
+        -- Avoid playing the clip merely to test whether it exists.
+        return true
+    end
+
     local willPlay, handle = PlaySoundFile(clip.path, channel)
-    if willPlay then
+    if willPlay and handle then
         StopSound(handle)
     end
     return willPlay

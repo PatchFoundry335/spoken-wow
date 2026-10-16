@@ -13,7 +13,7 @@
 -- it is called, and a non-English client gets from its own name to this key
 -- through Data/<locale>/Aliases.lua.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 if not SpokenZones:ShouldLoadLanguage("zhTW") then
 	return

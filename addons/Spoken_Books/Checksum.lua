@@ -9,7 +9,9 @@
 -- bytes rather than characters. The modulus is the largest signed 32-bit prime, so every
 -- intermediate value stays exact in the doubles Lua stores numbers as.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+_G.SpokenBooks = _G.SpokenBooks or {}
+local SpokenBooks = _G.SpokenBooks
 
 local MODULUS = 2147483647
 local FACTOR = 31

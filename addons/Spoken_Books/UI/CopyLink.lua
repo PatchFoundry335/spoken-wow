@@ -14,7 +14,8 @@
 -- this is a popup id and forty lines around it, and two addons sharing one StaticPopup id
 -- would be two addons overwriting each other's dialog.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 local POPUP = "SPOKENBOOKS_COPY_LINK"
 

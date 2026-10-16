@@ -7,7 +7,8 @@
 -- two are one button: Play to start the story, Stop while it is read, Replay once stopped, and
 -- Play again when it has ended. Report sits beside it (SpokenZones:CreateReportIcon).
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local L = SpokenZones.L
 

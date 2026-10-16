@@ -5,7 +5,8 @@
 -- DialogueUI loads every page of a book as it opens it and leaves the game on the last, so Play
 -- reads the book from its first page, not from the page the game is on.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 local L = SpokenBooks.L
 
 local ROUND, ROUND_GAP = 24, 4

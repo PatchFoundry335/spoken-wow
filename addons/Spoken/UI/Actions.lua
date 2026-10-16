@@ -269,16 +269,36 @@ function Tail:SetCount(waiting)
         self.counted = waiting
         self.count:SetText(waiting > 0 and "• +" .. waiting or "")
     end
+
     self.parts = {}
+
     if self.held then
-        self.held:SetShown(self.reason ~= nil)
-        if self.reason then table.insert(self.parts, self.held) end
+        if self.reason ~= nil then
+            self.held:Show()
+        else
+            self.held:Hide()
+        end
+
+        if self.reason then
+            table.insert(self.parts, self.held)
+        end
     end
+
     local stoppedShown = self.want or self.alpha > 0
-    self.stopped:SetShown(stoppedShown)
-    if stoppedShown then table.insert(self.parts, self.stopped) end
-    self.count:SetShown(waiting > 0)
-    if waiting > 0 then table.insert(self.parts, self.count) end
+
+    if stoppedShown then
+        self.stopped:Show()
+        table.insert(self.parts, self.stopped)
+    else
+        self.stopped:Hide()
+    end
+
+    if waiting > 0 then
+        self.count:Show()
+        table.insert(self.parts, self.count)
+    else
+        self.count:Hide()
+    end
 end
 
 function Tail:Room()

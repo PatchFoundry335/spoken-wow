@@ -580,7 +580,9 @@ if Version.IsLegacyWrath then
     end
 
     hooksecurefunc(Addon, "OnInitialize", function()
-        QuestLogScrollFrame.update = QuestLog_Update
+        if QuestLogListScrollFrame and QuestLog_Update then
+            QuestLogListScrollFrame.update = QuestLog_Update
+        end
     end)
 
     function Utils:GetQuestLogTitleCheck(index)
@@ -609,7 +611,9 @@ if Version.IsLegacyWrath then
     end
 
     hooksecurefunc(Addon, "OnInitialize", function()
-        QuestLogListScrollFrame.update = QuestLog_Update
+        if QuestLogListScrollFrame and QuestLog_Update then
+            QuestLogListScrollFrame.update = QuestLog_Update
+        end
     end)
 
     function Addon.OnAddonLoad.Guidelime()

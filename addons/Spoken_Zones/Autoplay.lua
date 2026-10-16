@@ -21,7 +21,8 @@
 -- character it changes nothing observable: the discovery message still arrives
 -- first and marks the area heard, leaving the override with nothing to say.
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 -- The queue itself is the Spoken player's, shared with every other route to a clip
 -- and with every other Spoken addon. This file decides what deserves narrating and
@@ -166,17 +167,23 @@ end
 local CONTINENT_MAP_TYPE = (Enum and Enum.UIMapType and Enum.UIMapType.Continent) or 2
 
 local function IsAutoplayableMap(mapID)
-	if not mapID then
-		return false
-	end
-	local info = C_Map.GetMapInfo(mapID)
-	-- An unknown map type is allowed through: this is a filter against three specific
-	-- maps, and refusing everything it cannot classify would silence the feature on a
-	-- client whose map table this addon has not seen.
-	if not info or not info.mapType then
-		return true
-	end
-	return info.mapType > CONTINENT_MAP_TYPE
+    if not mapID then
+        return false
+    end
+
+    -- WotLK 3.3.5a has no C_Map API.
+    -- Our resolver already identifies individual zones by name.
+    if not C_Map or not C_Map.GetMapInfo then
+        return true
+    end
+
+    local info = C_Map.GetMapInfo(mapID)
+
+    if not info or not info.mapType then
+        return true
+    end
+
+    return info.mapType > CONTINENT_MAP_TYPE
 end
 
 -- Returns whether the entry was queued, which the login greeting needs: a greeting that

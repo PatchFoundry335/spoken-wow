@@ -8,7 +8,8 @@
 -- use: UICheckButtonTemplate (Syndicator/Options) and UISliderTemplate
 -- (Syndicator/Options, Leatrix_Maps, Leatrix_Plus).
 
-local ADDON_NAME, SpokenZones = ...
+local ADDON_NAME = "Spoken_Zones"
+local SpokenZones = _G.SpokenZones
 
 local L = SpokenZones.L
 

@@ -19,7 +19,8 @@
 -- and an opening indistinguishable here -- and they should be: both mean "this is the page
 -- now", and SyncTo decides whether that changes anything.
 
-local ADDON_NAME, SpokenBooks = ...
+local ADDON_NAME = "Spoken_Books"
+local SpokenBooks = _G.SpokenBooks
 
 local frame = CreateFrame("Frame")
 SpokenBooks.eventFrame = frame

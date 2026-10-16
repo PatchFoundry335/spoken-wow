@@ -7,7 +7,7 @@
 -- Keyed by the raw client name: SpokenZones:NormaliseAreaKey reduces a name to
 -- [a-z0-9 ], which erases a Cyrillic or Chinese name entirely.
 
-local _, SpokenZones = ...
+local SpokenZones = _G.SpokenZones
 
 if not SpokenZones:ShouldLoadAliases("esMX") then
 	return

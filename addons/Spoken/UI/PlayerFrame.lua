@@ -121,11 +121,20 @@ function PlayerFrame:InitDisplay()
 
     self.frame.container = CreateFrame("Frame", nil, self.frame)
 
+    hooksecurefunc(self.frame.container, "SetAlpha", function(_, alpha)
+        if alpha == 0 then
+            print("CONTAINER SETALPHA ZERO")
+            print(debugstack(2, 8, 0))
+        end
+    end)
+    self.frame.container:SetAlpha(1)
+
     self.frame:SetScript("OnUpdate", function(_, elapsed) self:Tick(elapsed) end)
 end
 
 function PlayerFrame:InitPortrait()
     self.frame.portrait = CreateFrame("Frame", nil, self.frame)
+    self.frame.portrait:SetAlpha(1)
     self.frame.portrait:SetSize(PORTRAIT_SIZE, PORTRAIT_SIZE)
     self.frame.portrait:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PORTRAIT_X, PORTRAIT_Y)
 
@@ -285,7 +294,11 @@ function PlayerFrame:RefreshConfig()
         return
     end
     local cfg = FrameConfig()
-    self.frame.portrait:SetShown(not cfg.HidePortrait)
+    if cfg.HidePortrait then
+        self.frame.portrait:Hide()
+    else
+        self.frame.portrait:Show()
+    end
     self.frame.mover:ClearAllPoints()
     if cfg.HidePortrait then
         self.frame.mover:SetParent(self.frame)
@@ -296,7 +309,11 @@ function PlayerFrame:RefreshConfig()
     end
     self:ApplyArt()
 
-    self.frame.mover:SetShown(not Addon:IsFrameLocked())
+    if Addon:IsFrameLocked() then
+        self.frame.mover:Hide()
+    else
+        self.frame.mover:Show()
+    end
     self.frame:SetScale(cfg.FrameScale)
     self.frame:SetFrameStrata(cfg.FrameStrata)
     Addon:ApplyHost(self.frame)
@@ -339,8 +356,13 @@ function PlayerFrame:Layout()
         words > 0 and words + 2 * lineHeight or 0)
 
     self.progress.track:SetWidth(width)
-    self.progress.track:SetShown(Addon:Profile("Transcript").SubtitleProgress ~= false)
+    if Addon:Profile("Transcript").SubtitleProgress ~= false then
+        self.progress.track:Show()
+    else
+        self.progress.track:Hide()
+    end
     self:LayoutHeader()
+
     self.laying = nil
 end
 

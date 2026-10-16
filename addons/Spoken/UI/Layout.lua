@@ -2587,7 +2587,13 @@ local function BuildScrollBar(view, parent)
         "!minimal-scrollbar-track-middle", "minimal-scrollbar-track-bottom")) then
         local track = bar:CreateTexture(nil, "BACKGROUND")
         track:SetAllPoints()
-        track:SetColorTexture(1, 1, 1, 0.06)
+        -- Prev LINE we replaced: track:SetColorTexture(1, 1, 1, 0.06)
+        if track.SetColorTexture then
+            track:SetColorTexture(1, 1, 1, 0.06)
+        else
+            track:SetTexture("Interface\\Buttons\\WHITE8X8")
+            track:SetVertexColor(1, 1, 1, 0.06)
+        end
     end
 
     local thumb = CreateFrame("Button", nil, bar)
@@ -2609,7 +2615,14 @@ local function BuildScrollBar(view, parent)
         if pieces then
             for _, piece in ipairs(pieces) do piece:SetAlpha(alpha) end
         else
-            thumbTex:SetColorTexture(1, 0.82, 0, (view.dragging or over) and 0.75 or 0.45)
+            local alpha = (view.dragging or over) and 0.75 or 0.45
+
+            if thumbTex.SetColorTexture then
+                thumbTex:SetColorTexture(1, 0.82, 0, alpha)
+            else
+                thumbTex:SetTexture("Interface\\Buttons\\WHITE8X8")
+                thumbTex:SetVertexColor(1, 0.82, 0, alpha)
+            end
         end
     end
     Look()
@@ -2681,7 +2694,8 @@ function Layout.Scroll(parent)
     view.contentHeight = 0
 
     local scroll = CreateFrame("ScrollFrame", nil, parent)
-    scroll:SetAllPoints(parent)
+    scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, -35)
+    scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 15)
     if scroll.SetClipsChildren then
         scroll:SetClipsChildren(true)
     end
