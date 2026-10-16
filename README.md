@@ -1,5 +1,56 @@
 # Spoken
 
+## WotLK 3.3.5a Community Port
+
+This branch ports **Spoken v3.4.0** to the original **World of Warcraft: Wrath of the Lich King 3.3.5a (build 12340)** client.
+
+Unlike the original legacy-client distribution, this port supports all four addon modules:
+
+- **Spoken** :: narration engine, settings, minimap button, and playback controls.
+- **Spoken Quests** :: quest dialogue and NPC gossip.
+- **Spoken Books** :: readable books, letters, and other in-world texts.
+- **Spoken Zones** :: zone and subzone narration.
+
+This is for the original 3.3.5a client, **not Wrath Classic**.
+
+
+### Installation :: WotLK 3.3.5a
+
+1. Download the WotLK 3.3.5a release ZIP from this fork's
+   [Releases](../../releases) page.
+2. Extract these four folders into `Interface/AddOns/`:
+   - `Spoken`
+   - `Spoken_Quests`
+   - `Spoken_Books`
+   - `Spoken_Zones`
+3. Install the appropriate Spoken voice/audio packs separately.
+4. Restart WoW and enable the addons at character selection.
+5. Configure Spoken using its in-game settings.
+
+Expected folder structure:
+
+    Interface/
+        AddOns/
+            Spoken/
+            Spoken_Quests/
+            Spoken_Books/
+            Spoken_Zones/
+
+**Compatibility:** Original WoW 3.3.5a (build 12340).
+Not intended for Wrath Classic or modern WoW clients.
+
+**Important:** Use this port's release ZIP rather than the
+unmodified upstream addon folders. The port contains compatibility
+fixes required by the original 3.3.5a client.
+
+
+Voice/audio packs are distributed separately and are required for spoken audio. The original Spoken project and its audio packs are maintained by [rusty-key](https://github.com/rusty-key/spoken-wow).
+
+The documentation below describes the upstream project. Some statements about legacy-client module support and installation do not apply to this port.
+
+---
+
+
 Discord: https://discord.gg/HEGUgn6Yf
 
 Voiced dialogue, lore and text for World of Warcraft Classic.
