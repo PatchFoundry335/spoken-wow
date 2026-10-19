@@ -24,6 +24,9 @@ This is for the original 3.3.5a client, **not Wrath Classic**.
    - `Spoken_Books`
    - `Spoken_Zones`
 3. Install the appropriate Spoken voice/audio packs separately.
+   - **Important:** Downloaded audio packs may require minor TOC changes
+     for the original 3.3.5a client. See the
+     [Audio Pack Compatibility Guide](docs/AUDIO-PACKS-3.3.5a.md).
 4. Restart WoW and enable the addons at character selection.
 5. Configure Spoken using its in-game settings.
 
