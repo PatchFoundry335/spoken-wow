@@ -24,6 +24,17 @@
 local ADDON_NAME = "Spoken_Zones"
 local SpokenZones = _G.SpokenZones
 
+-- Use Spoken's embedded AceTimer scheduler for delayed callbacks.
+-- AceTimer provides the native C_Timer implementation on modern clients
+-- and our OnUpdate compatibility fallback on original WotLK 3.3.5a.
+-- Use the bundled AceTimer library for delayed callbacks.
+-- Both Spoken and Spoken Zones include our 3.3.5a-compatible version.
+local timerOwner = {}
+
+local function After(delay, callback)
+    LibStub("AceTimer-3.0").ScheduleTimer(timerOwner, callback, delay)
+end
+
 -- The queue itself is the Spoken player's, shared with every other route to a clip
 -- and with every other Spoken addon. This file decides what deserves narrating and
 -- hands it over; the depth cap, the dedup and the retry after combat are the
@@ -554,7 +565,7 @@ end
 
 local function OnCinematicStart()
 	RecheckForCinematic()
-	C_Timer.After(0, RecheckForCinematic)
+	After(0, RecheckForCinematic)
 end
 
 -- The payload is not in the same position across those events: CHAT_MSG_* put the
@@ -621,7 +632,7 @@ function SpokenZones:SetupAutoplay()
 		-- player who watched it to the end arrived after the last attempt and was greeted
 		-- by nothing. The attempts start counting once it is over.
 		if CinematicUp() then
-			C_Timer.After(LOGIN_SEED_DELAY, seed)
+			After(LOGIN_SEED_DELAY, seed)
 			return
 		end
 		attempts = attempts + 1
@@ -632,10 +643,10 @@ function SpokenZones:SetupAutoplay()
 		-- duplicate, so the spawn area cannot end up queued by both.
 		NarrateUnheard()
 		if not settled and attempts < LOGIN_SEED_ATTEMPTS then
-			C_Timer.After(LOGIN_SEED_DELAY, seed)
+			After(LOGIN_SEED_DELAY, seed)
 		end
 	end
-	C_Timer.After(LOGIN_SEED_DELAY, seed)
+	After(LOGIN_SEED_DELAY, seed)
 end
 
 -- Reports whether the client defined the strings this feature is built on, so a

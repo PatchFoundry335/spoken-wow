@@ -15,7 +15,7 @@
 -- make into AceTimer.
 -- @class file
 -- @name AceTimer-3.0
--- @release $Id: AceTimer-3.0.lua 1284 2022-09-25 09:15:30Z nevcairiel $
+-- @release $Id: AceTimer-3.0.lua 1342 2024-05-26 11:49:35Z nevcairiel $
 
 local MAJOR, MINOR = "AceTimer-3.0", 17 -- Bump minor on changes
 local AceTimer, oldminor = LibStub:NewLibrary(MAJOR, MINOR)
@@ -27,7 +27,53 @@ local activeTimers = AceTimer.activeTimers -- Upvalue our private data
 -- Lua APIs
 local type, unpack, next, error, select = type, unpack, next, error, select
 -- WoW APIs
-local GetTime, C_TimerAfter = GetTime, C_Timer.After
+local GetTime = GetTime
+local C_TimerAfter
+
+if C_Timer and C_Timer.After then
+    -- Modern WoW clients
+    C_TimerAfter = C_Timer.After
+else
+    -- Original WoW 3.3.5a compatibility
+    local frame = CreateFrame("Frame")
+    local timers = {}
+
+    frame:Hide()
+
+    frame:SetScript("OnUpdate", function(self, elapsed)
+        local ready = {}
+
+        -- Update existing timers and collect expired callbacks.
+        -- Remove them before executing any callback.
+        for i = #timers, 1, -1 do
+            local timer = timers[i]
+            timer.remaining = timer.remaining - elapsed
+
+            if timer.remaining <= 0 then
+                table.remove(timers, i)
+                ready[#ready + 1] = timer.callback
+            end
+        end
+
+        -- Callbacks may schedule additional timers.
+        -- Those timers will be processed on the next frame.
+        if #timers == 0 then
+            self:Hide()
+        end
+
+        for i = 1, #ready do
+            ready[i]()
+        end
+    end)
+
+    C_TimerAfter = function(delay, callback)
+        table.insert(timers, {
+            remaining = delay,
+            callback = callback
+        })
+        frame:Show()
+    end
+end
 
 local function new(self, loop, func, delay, ...)
 	if delay < 0.01 then
@@ -78,7 +124,7 @@ end
 
 --- Schedule a new one-shot timer.
 -- The timer will fire once in `delay` seconds, unless canceled before.
--- @param callback Callback function for the timer pulse (funcref or method name).
+-- @param func Callback function for the timer pulse (funcref or method name).
 -- @param delay Delay for the timer, in seconds.
 -- @param ... An optional, unlimited amount of arguments to pass to the callback function.
 -- @usage
@@ -107,7 +153,7 @@ end
 
 --- Schedule a repeating timer.
 -- The timer will fire every `delay` seconds, until canceled.
--- @param callback Callback function for the timer pulse (funcref or method name).
+-- @param func Callback function for the timer pulse (funcref or method name).
 -- @param delay Delay for the timer, in seconds.
 -- @param ... An optional, unlimited amount of arguments to pass to the callback function.
 -- @usage
