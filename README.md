@@ -1,154 +1,83 @@
-# Spoken
+# Spoken 3.5.1 — WotLK 3.3.5a Compatibility Port
 
-Discord: https://discord.gg/HEGUgn6Yf
+> **Unofficial compatibility port** of [Spoken by rusty-key](https://github.com/rusty-key/spoken-wow) for the original World of Warcraft: Wrath of the Lich King **3.3.5a (build 12340)** client.
 
-Voiced dialogue, lore and text for World of Warcraft Forever. The other clients' code is
-still here, with no new work going into it.
+## Download
 
-Spoken is one download: Spoken itself and its three modules, Spoken Quests, Spoken Places and
-Spoken Readables. Each is a folder of its own, grouped under Spoken in the
-AddOns list. Spoken plays every line and owns the settings page, the minimap button, the queue
-and the narrator window or subtitles; each module reads one kind of text and has a page of its
-own under Spoken's settings. Every module comes installed. A player who does not want one
-switches it off on its card on Spoken's page, disables it in the AddOns list, or deletes its
-folder. The voice packs are separate downloads. `Spoken_Developer`, the debug log, is for
-developers and is not in the zip.
+**[Download Spoken 3.5.1 for WotLK 3.3.5a](https://github.com/PatchFoundry335/spoken-wow/releases/download/wotlk-v3.5.1/Spoken-v3.5.1-WotLK-3.3.5a.zip)**
 
-| Folder | Addon | Voices | Voice packs |
-|---|---|---|---|
-| `Spoken` | **Spoken** | nothing itself: it plays every module's lines | — |
-| `Spoken_Quests` | **Spoken Quests** | quest dialogue and NPC gossip | [All](https://www.curseforge.com/wow/addons/spoken-quests-audio-all), or [Alliance](https://www.curseforge.com/wow/addons/spoken-audio-quests-alliance) · [Horde](https://www.curseforge.com/wow/addons/spoken-audio-quests-horde) · [Shared](https://www.curseforge.com/wow/addons/spoken-audio-quests-shared) · [Gossip](https://www.curseforge.com/wow/addons/spoken-audio-gossip) — or all in one from [GitHub](https://github.com/rusty-key/spoken-wow/releases?q=quests-audio) |
-| `Spoken_Readables` | **Spoken Readables** | books, letters and other in-world texts | [CurseForge](https://www.curseforge.com/wow/addons/spoken-audio-readables) · [GitHub](https://github.com/rusty-key/spoken-wow/releases?q=books-audio) |
-| `Spoken_Places` | **Spoken Places** | zone and subzone lore | [CurseForge](https://www.curseforge.com/wow/addons/spoken-audio-places) · [GitHub](https://github.com/rusty-key/spoken-wow/releases?q=zones-audio) |
+[View release notes](https://github.com/PatchFoundry335/spoken-wow/releases/tag/wotlk-v3.5.1)
 
-`make package-spoken` builds the download, `Spoken-<version>.zip`, with every module built by
-its own packager. A module's voice pack holds its recordings; the module has nothing to play
-without one, and the pack does nothing without the module.
+Use the release ZIP for installation, **not** GitHub's automatically generated source-code ZIP. The repository contains development tools and files for multiple WoW clients.
 
-The sound packs are not on Wago. Each is 280 to 452 MB and Wago's upload endpoint refuses a
-file this size, so a pack comes from CurseForge or from a GitHub release, one tag per pack,
-`<pack>/vX.Y.Z`. English quests are the four split packs on CurseForge, and the same four in
-one `quests-audio` zip on GitHub. `scripts/audio-github-release.sh` cuts the release from the
-machine that built the audio, since the audio is outside git and no runner can rebuild it.
+## Included addons
 
-The 1.12, 2.4.3 and 3.3.5 clients have no addon manager and no CurseForge. They take Spoken
-Quests' own zips from [Releases](../../releases), which carry Spoken inside
-them; Places and Readables do not run there.
+The 3.5.1 release includes four folders, all ported to WotLK 3.3.5a:
 
-On the stores, `spoken` is Spoken and ships the zip above, and `spoken-english` is a meta addon
-that pulls in Spoken and every English voice pack. `spoken-quests`, `spoken-zones` and
-`spoken-books` are retired. Each has a page in `publishers/` that says so.
-The module folders were `SpokenQuests`, `SpokenZones` and `SpokenBooks` until 3.0.0-beta.3,
-and those names belong to the retired projects, so the modules moved to `Spoken_Quests`,
-`Spoken_Places` and `Spoken_Books`; Spoken_Books has since become `Spoken_Readables`. The voice
-packs name Spoken as their dependency. Folders an older release left behind (`SpokenPlayer`,
-`VoiceOverRedux`, `ZoneLore`, and a full old copy of a module under its old name) are found at
-login, and the player is asked to delete them.
+| Folder | Purpose |
+| --- | --- |
+| `Spoken` | Core voice player, narration UI, settings, playback queue, and Azeroth's Compendium |
+| `Spoken_Quests` | Quest dialogue and NPC gossip |
+| `Spoken_Places` | Zone and subzone lore narration |
+| `Spoken_Readables` | Books, letters, notes, plaques, and other readable objects |
 
-## What players see
+These are the current module names. Earlier addon folders such as `Spoken_Zones`, `Spoken_Books`, `SpokenQuests`, `SpokenZones`, and `SpokenBooks` are **not** part of this release.
 
-**Narrator styles.** Spoken shows a line in one of four ways, five with DialogueUI, chosen
-on the Spoken settings page or in the welcome window on first login:
+## Installation
 
-- **Subtitles Only**, the default on Forever and the other modern clients: the speaker's name
-  and the words low in the middle of the screen over a soft shadow, at most four lines at a
-  time. A longer line turns its pages as the voice reaches them, one fading out before the
-  next fades in. The words type in letter by letter (or whole words, in the settings), a
-  little ahead of the voice. Stop or Replay, skip and Report appear on hover.
-- **Small Window** (Minimal Classic): a round portrait, the speaker's name, the title and a
-  slim progress bar, with the controls and the queue on interaction. See
-  [`docs/minimal-classic/`](docs/minimal-classic/README.md).
-- **Large Window**: the game's Talking Head frame where the client has its art: a bigger
-  portrait, with the speaker's name, the words, the controls and a count of the lines waiting
-  beside it in one box. The 1.12, 2.4.3 and 3.3.5 clients start in this one; 2.4.3 and 3.3.5 can
-  switch to Subtitles Only.
-- **DialogueUI**, offered only with the [DialogueUI](https://www.curseforge.com/wow/addons/dialogueui)
-  addon installed: a smaller twin of its quest window, in its own parchment or dark art. See
-  [`docs/spoken/PLAYER-STYLES.md`](docs/spoken/PLAYER-STYLES.md).
-- **Voice Only**: nothing on screen.
+1. Download the [WotLK 3.5.1 release ZIP](https://github.com/PatchFoundry335/spoken-wow/releases/download/wotlk-v3.5.1/Spoken-v3.5.1-WotLK-3.3.5a.zip).
+2. Close World of Warcraft.
+3. Remove older Spoken **addon module folders** before replacing them. Keep separately installed audio packs.
+4. Extract the ZIP directly into `World of Warcraft/Interface/AddOns/`.
+5. At the character selection screen, open **AddOns** and enable the four Spoken modules.
 
-The windows can show the words as caption lines too, with the words being read lit in gold
-(Highlight Words, off by default); see [caption controls](docs/spoken/CAPTIONS.md). Word
-timing is an estimate, because the recordings do not mark where each word falls. The
-subtitles light a word only while Highlight Words is on and Type Words Out is off, since a
-word lit as it is typed shows every miss.
+The folder layout should be:
 
-**Languages.** Menus, settings and messages follow the game's text language: English,
-German, Spanish, French, Korean, Brazilian Portuguese, Russian and both Chinese scripts. The
-language the voices speak is a separate choice, Voice Language on Spoken's page: Auto follows
-the game, and a language is heard only when its voice pack is installed.
-
-**Settings** follow the game's own settings pages: a fixed header with Defaults, sections
-and rows laid out as Blizzard's are, the game's checkboxes, sliders and dropdowns. The
-Spoken page opens with a card per module (on or off, its voice packs as a progress bar, a
-button to its page), then the narrator style as pictures, the voice language, the sound, the
-keys, a Fix a Problem section and the finer settings. Profiles switch the settings of Spoken
-and every module together; Places and Readables keep theirs inside Spoken's profile. Each
-module has a page of its own. Read in Battlegrounds, on by default, keeps Spoken quiet in
-battlegrounds and arenas when switched off.
-
-**Quests.** The quest log's details have Play and Report, the same round buttons the
-subtitle uses; a quest with no recording offers Contribute in their place.
-
-**Places.** The Place Story sits beside the world map, in a panel of its own, with the story of
-the zone or area the map shows on the quest log's parchment, and Play, Report and a button
-that opens it in Azeroth's Compendium. The Compendium opens from the minimap menu, `/sp
-compendium` or `/spp window`. It browses every quest, every place story and every readable, with
-a search box, and plays any of them without going there. Places follows Spoken's Voice
-Language.
-
-**Defaults on a first install:** every module on; Subtitles Only; Show Narrator and Type Words
-Out on, by letters, Highlight Words off; subtitle size 100% and its shadow at 60%; the voice in
-the game's language with English for a missing line; volume on Master; NPC voices silenced
-while a line plays; other sounds turned down (music 30%, ambience 40%, effects 60%); missing
-lines collected for contributing; the minimap button shown, unlocked and in the AddOns menu;
-no keys bound.
-
-## Layout
-
-```
-addons/      Spoken, its modules, and the sound packs
-apps/web     the site, spoken.rusty.one: quests, gossip, zones and books sections,
-             per-line reports and /contribute for text the corpus has none of yet
-pipelines/   corpus extraction and voiceline generation
-             quests/ is Python, zones/ and books/ are Node, lib/ is shared
-publishers/  the store pages, one markdown file per project
-scripts/     packaging, release and description tooling
-deploy/web   the droplet: nginx, pm2, release scripts and the runbook
-tests/lua/   the luajit addon harness
-make/        one Makefile per project; the root Makefile dispatches
-docs/        each section's own prose
+```text
+Interface/
+└── AddOns/
+    ├── Spoken/
+    │   └── Spoken.toc
+    ├── Spoken_Quests/
+    │   └── Spoken_Quests.toc
+    ├── Spoken_Places/
+    │   └── Spoken_Places.toc
+    └── Spoken_Readables/
+        └── Spoken_Readables.toc
 ```
 
-## Working here
+Make sure there is no extra outer directory between `AddOns/` and these four folders.
 
-`make help` lists what is available. Targets are prefixed by project:
+### Voice packs
 
-```
-make web-<target>       # see make/web.mk   -- the site and its droplet
-make quests-<target>    # see make/quests.mk
-make zones-<target>     # see make/zones.mk
-make books-<target>     # see make/books.mk
-make test-player        # the Lua harness, all addons
-make lint               # the repo-wide checks
-```
+**Voice recordings are separate downloads** and are not included in this release ZIP. Spoken and its content modules need compatible audio packs to play recorded narration. Existing compatible packs may be reused.
 
-`THIRD_PARTY.md` says what in here is not this project's, and under what terms: the
-vendored libraries, the game text the corpus is built from, and the wiki lore and
-pictures the Places addon ships.
+For audio packs, see the [upstream Spoken releases](https://github.com/rusty-key/spoken-wow/releases) and CurseForge listings for [quests](https://www.curseforge.com/wow/addons/spoken-quests-audio-all), [places](https://www.curseforge.com/wow/addons/spoken-audio-places), and [readables](https://www.curseforge.com/wow/addons/spoken-audio-readables). Packs intended for newer clients are not necessarily compatible with original WotLK 3.3.5a.
 
-Read `AGENTS.md` before changing anything, and the section READMEs under `docs/`
-for what each section does. They are detailed, and they are the reference to check
-before inferring behaviour from the code.
+## Features in this port
 
-## History
+- Voiced quest dialogue and NPC gossip
+- Zone and subzone lore narration through **Spoken Places**
+- Books, plaques, and other readable text through **Spoken Readables**
+- Narration controls, settings, and playback queue adapted for WotLK
+- **Azeroth's Compendium** for browsing and replaying supported quests, places, and readables
+- Compatibility changes for WotLK's older game APIs and Lua 5.1
 
-This repository began as the merge of two that came before it, imported with their
-full history:
+All four modules, settings, and the Compendium have been tested in-game on WotLK 3.3.5a. Some UI details may differ from the modern-client version.
 
-- `rusty-key/wow-voiceover` — now `quests`
-- `rusty-key/wow-zone-lore` — now `zones`
+## Source branches
 
-`git log --follow` works across the move. Tags from the first are prefixed
-`legacy/quests/` because they predate the addon they would otherwise appear
-to name.
+| Branch | Description |
+| --- | --- |
+| [`wotlk-3.5.1`](https://github.com/PatchFoundry335/spoken-wow/tree/wotlk-3.5.1) | Current 3.5.1 compatibility port |
+| [`wotlk-3.3.5a`](https://github.com/PatchFoundry335/spoken-wow/tree/wotlk-3.3.5a) | Previous WotLK compatibility port |
+
+This is a compatibility fork rather than a clean merge of upstream Git history. GitHub's ahead/behind commit counts reflect that history and do not, by themselves, indicate whether the port includes current addon files.
+
+The repository also contains the upstream project's web application, build tools, tests, and other development infrastructure. **Install from the WotLK release ZIP**, not the repository source tree.
+
+## Credits and licensing
+
+Spoken is developed by **[rusty-key](https://github.com/rusty-key/spoken-wow)** and upstream contributors. This fork supplies unofficial compatibility changes for the original 3.3.5a client and is not an official upstream release or affiliated with Blizzard Entertainment.
+
+See [THIRD_PARTY.md](THIRD_PARTY.md) and the upstream project for licensing and attribution of third-party code, game text, artwork, and other materials.
