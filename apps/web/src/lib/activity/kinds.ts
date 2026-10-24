@@ -52,6 +52,8 @@ export type ActivityDetail = {
     note?: string | null;
     variant?: number;
     origin?: string;
+    /** The plain line a split by player gender stopped being current. */
+    replaces?: string[];
     /** The contribution whose text this is, for a correction accepted from the game. */
     contribution?: number;
   };
@@ -68,24 +70,38 @@ export type ActivityDetail = {
 
   // Voices.
   "voice.cloned": { voiceId?: string; sampleCount?: number | null };
+  /** A voice already in the account, renamed into the slot; `from` is its name before. */
+  "voice.adopted": { voiceId?: string; from?: string };
   "reference.set": { sample?: string; transcript?: string | null };
   "reference.edited": { transcript?: string | null };
   "reference.deleted": Record<string, never>;
+  "reference.pinned": Record<string, never>;
+  "reference.unpinned": Record<string, never>;
   "sample.added": { files: string[] };
   "sample.deleted": { files: string[] };
   "sample.imported": { files: string[] };
   "sample.merged": { files: string[]; into?: string };
   "npc.resolved": {
     npcName?: string | null;
-    /** For one sex of an NPC split by sex (migration 0072): UnitSex's 2 or 3. */
+    /** For one body of an NPC split by body (migration 0075): its sex, UnitSex's 2 or 3. */
     sex?: number;
     race?: string | null;
     gender?: string | null;
     flavor?: string | null;
     doubtful?: boolean;
   };
-  "npc.split": { npcName?: string | null };
-  "npc.unsplit": { npcName?: string | null };
+  "npc.split": { npcName?: string | null; race?: string; sex?: number };
+  "npc.unsplit": { npcName?: string | null; race?: string; sex?: number };
+  /** An NPC made one more speaker of a line by hand, or taken off it. Subject: the line. */
+  "npc.speaker_added": { npcName?: string | null; npcType: string; npcId: number };
+  "npc.speaker_removed": { npcName?: string | null; npcType: string; npcId: number };
+  /** One NPC put in another's place on a line, `from` being the one taken off. */
+  "npc.speaker_replaced": {
+    npcName?: string | null;
+    npcType: string;
+    npcId: number;
+    from: { npcName?: string | null; npcType: string; npcId: number };
+  };
   "type.changed": {
     action: string;
     gender?: string | null;

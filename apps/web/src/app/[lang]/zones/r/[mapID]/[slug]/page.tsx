@@ -5,6 +5,7 @@ import Link from "@/components/LocaleLink";
 import { notFound } from "next/navigation";
 
 import ReportForm from "@/components/ReportForm";
+import ListenFirst from "@/components/reports/ListenFirst";
 import { audioRelPath } from "@/lib/zones/audio";
 import { isCorpusEmpty, lineByPath, loadContext } from "@/lib/zones/catalogue";
 import { Contained } from "@/components/Width";
@@ -77,6 +78,8 @@ export default async function Page({ params }: { params: Promise<Params> }) {
             {entry.kind === "subzone" ? `In ${entry.zoneName}` : "Zone lore"}
           </p>
 
+          {take ? <ListenFirst className="mt-4" /> : null}
+
           {take ? (
             // The native control rather than the explorer's Player: that one carries a rate
             // selector and keyboard wiring built for somebody working through a list. Here
@@ -112,7 +115,7 @@ export default async function Page({ params }: { params: Promise<Params> }) {
               Wrong lore, a mispronunciation, or narration that does not play. Nothing is
               required but the description.
             </p>
-            <ReportForm source="zones" target={entry.file} lineId={entry.id} />
+            <ReportForm source="zones" target={entry.file} lineId={entry.id} fromGame />
           </section>
 
           <footer className="text-muted-foreground mt-8 text-sm">

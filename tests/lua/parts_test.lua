@@ -10,6 +10,8 @@ local H = require("queue_helpers")
 local Expect, Failures = H.Expecter(stub.print)
 local SPOKEN = here .. "/../../addons/Spoken/"
 
+-- Pages under Spoken held until the world is entered, as in the game (see below).
+stub.holdPages = true
 local env, quests, zones = H.Fresh(stub, SPOKEN)
 local Q, S = env.SoundQueue, env.Sources
 
@@ -30,8 +32,10 @@ Expect("switched back on, it plays again", quests:Enqueue(H.Clip()) ~= nil, true
 Expect("...and nothing is left in the settings", env.Addon.db.profile.Parts.quests, nil)
 Q:RemoveAllSoundsFromQueue()
 
--- A feature addon may build its settings page before Spoken's own entry exists. The page
--- waits, then is nested under it in its order rather than in the order the addons loaded.
+-- A feature addon may build its settings page before Spoken's own entry exists, or after it,
+-- on entering the world. The game lists them in the order they were registered, so each page
+-- waits until just after the world is entered, then all are nested in their order rather than
+-- in the order the addons asked.
 stub.settingsCategories = {}
 local zonesPage = _G.Spoken:AddSettingsPage(CreateFrame("Frame"), "Zones", 3)
 local questsPage = _G.Spoken:AddSettingsPage(CreateFrame("Frame"), "Quests", 1)
@@ -41,6 +45,10 @@ Expect("a page asked for before Spoken's own entry waits for it", questsPage.cat
 -- Quests found no voice pack, as the real addon reports it when none is installed.
 quests.packs = function() return {} end
 env.Addon:Enable()
+local gossipPage = _G.Spoken:AddSettingsPage(CreateFrame("Frame"), "Gossip", 2)
+Expect("...and one asked for after it, until the world is entered", gossipPage.category, nil)
+stub.FireEvent("PLAYER_ENTERING_WORLD")
+stub.Advance(0.1)
 local function Listed()
     local names = {}
     for _, category in ipairs(stub.settingsCategories) do
@@ -48,26 +56,29 @@ local function Listed()
     end
     return table.concat(names, "|")
 end
-Expect("...then is nested under it, in its own order", Listed(), "Spoken|Spoken>Quests|Spoken>Zones")
-local readables = _G.Spoken:AddSettingsPage(CreateFrame("Frame"), "Books", 2)
+Expect("...then is nested under it, in its own order", Listed(), "Spoken|Spoken>Quests|Spoken>Gossip|Spoken>Zones|Spoken>Contribute & Report")
+local readables = _G.Spoken:AddSettingsPage(CreateFrame("Frame"), "Writings", 2)
 Expect("a page asked for afterwards is nested at once", readables.category and readables.category.parent.name, "Spoken")
 Expect("opening a page opens its own entry", readables.Open(), true)
 local labels = {}
 for _, text in ipairs(stub.LabelsUnder(_G.SpokenOptionsPanel)) do labels[text] = true end
-Expect("the parts have a section of their own", labels["Modules"], true)
+Expect("the parts have a section of their own", labels["What Spoken Reads"], true)
 Expect("an installed part is named for what it reads", labels["Quests"], true)
-Expect("...and so is the other", labels["Zones"], true)
-Expect("a part not installed still has its row", labels["Books"], true)
+Expect("...and so is the other", labels["Places"], true)
+Expect("a part not installed still has its row", labels["Readables"], true)
 local readablesCard
+local cards = {}
 for _, child in ipairs(_G.SpokenOptionsPanel.content.children) do
     for _, row in ipairs(child.layoutRows or {}) do
-        if row.layoutCard and row.layoutCard.title == "Books" then readablesCard = row end
+        if row.layoutCard and row.layoutCard.title == "Readables" then readablesCard = row end
+        if row.layoutCard then table.insert(cards, row.layoutCard.title) end
     end
 end
+Expect("the modules are listed Quests, Gossip, Places, Readables", table.concat(cards, ", "), "Quests, Gossip, Places, Readables")
 Expect("...which says why it cannot be turned on", readablesCard and readablesCard.layoutReason, env.L.REASON_NOT_INSTALLED)
 -- The modules register on entering the world, after the page is built: the row is drawn again
 -- at once, not left saying "Not installed" until something else redraws it.
-local lateBooks = _G.Spoken:RegisterSource("books", { title = "Spoken Books", order = 4 })
+local lateBooks = _G.Spoken:RegisterSource("books", { title = "Spoken Writings", order = 4 })
 Expect("a module registering after the page is built is installed on its row at once",
     readablesCard and readablesCard.layoutReason, nil)
 env.Sources.byKey.books = nil
@@ -98,5 +109,21 @@ _G.Spoken:SetPartOn("quests", false); env.Options:UpdateRows()
 Expect("...while still saying whether it has its voices", env.Options:PartVoice("quests"), "muted")
 _G.Spoken:SetPartOn("quests", true); env.Options:UpdateRows()
 Expect("nothing went wrong in a callback", #env.Callbacks.errors, 0)
+
+-- Another source that registers is listed too, with its own title, line and place in the order;
+-- the page and the Welcome window draw whatever Parts() lists when they are built.
+local bosses = _G.Spoken:RegisterSource("bosses", { title = "Bosses", about = "What a boss says.", order = 2.5 })
+local keys = {}
+for _, part in ipairs(env.Options:Parts()) do table.insert(keys, part.key) end
+Expect("a registered source is listed among the parts, in its order", table.concat(keys, ","),
+    "quests,gossip,bosses,zones,books")
+Expect("...with the line it gave", env.Options:Parts()[3].text, "What a boss says.")
+Expect("...and it can be switched off like the others", _G.Spoken:IsPartOn("bosses"), true)
+Expect("a part with no page of its own has no button to one", env.Options:HasPage(2.5), false)
+Expect("...where a part with a page has", env.Options:HasPage(1), true)
+env.Sources.byKey.bosses = nil
+for i, source in ipairs(env.Sources.ordered) do
+    if source == bosses then table.remove(env.Sources.ordered, i) break end
+end
 
 os.exit(Failures() == 0 and 0 or 1)

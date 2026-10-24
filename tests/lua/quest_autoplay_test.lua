@@ -96,7 +96,7 @@ local function Close()
     _G.Spoken:StopAll()
 end
 
-for _, client in ipairs({ "11509", "1.12" }) do
+for _, client in ipairs({ "16001", "1.12" }) do
     local VO, played = Boot(client)
     local button = VO.DialogPlayButton.button
 
@@ -143,7 +143,7 @@ for _, client in ipairs({ "11509", "1.12" }) do
     Expect(client .. ": a quest with no line shows no Play button", button:IsShown(), false)
     Close()
 
-    -- Gossip already heard once from this NPC: the Once per NPC default would hold it back
+    -- Gossip already heard once from this NPC: the Once per Greeting default would hold it back
     -- from autoplay, but Play is the player asking for it.
     OpenGossip("We stand ready.")
     Expect(client .. ": autoplay off, gossip reads nothing", Played(played), "(nothing)")
@@ -177,7 +177,7 @@ for _, client in ipairs({ "11509", "1.12" }) do
 
     -- An auto-accept addon closes the dialog in the frame it opened. The snapshot that
     -- replays it is automatic playback too, and must be held back with the rest.
-    if client == "11509" then
+    if client == "16001" then
         world.questID = 101
         stub.FireEvent("QUEST_DETAIL")
         world.questID = 0

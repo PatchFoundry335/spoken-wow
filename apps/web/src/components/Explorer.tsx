@@ -1,6 +1,7 @@
 "use client";
 
-import { nameSubject, TranslateDialog, type TranslateSubject } from "@/components/TranslateDialog";
+import { lineTextSubject, nameSubject, TranslateDialog, type TranslateSubject } from "@/components/TranslateDialog";
+import { isTypingTarget } from "@/lib/keyboard";
 import { useLang } from "@/components/LangProvider";
 import { BASE_LANG, withLang } from "@/lib/lang";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import LineRow from "./LineRow";
 import Key from "./Key";
 import Pagination from "./Pagination";
 import Player from "./Player";
+import AddSpeakerDialog from "./AddSpeakerDialog";
 import IgnoreDialog from "./IgnoreDialog";
 import ReportDialog from "./ReportDialog";
 import OverrideDialog from "./OverrideDialog";
@@ -25,7 +27,7 @@ import RecordingDropZone from "@/components/RecordingDropZone";
 import { RECORDED, type Recorded } from "@/lib/recordings/live";
 import { BROADCAST_STATUSES } from "@/lib/broadcast/status";
 import type { Facets } from "@/lib/facets";
-import type { Kind } from "@/lib/line-fields";
+import { sourcesFromParam } from "@/lib/line-fields";
 import { NARRATOR_VOICE } from "@/lib/generation/narration";
 import { PROVIDER_NAME } from "@/lib/generation/providers";
 import {
@@ -41,10 +43,12 @@ import {
 import { estimate as estimateBatch, LIST_RATE } from "@/lib/generation/billing";
 import { useClearDirty } from "@/lib/generation/use-clear-dirty";
 import { useCan } from "@/components/useCan";
-import { canConfigureGeneration } from "@/lib/permissions";
+import { useHistoryMode } from "@/components/useHistoryMode";
+import { canConfigureGeneration, isAdmin } from "@/lib/permissions";
 import { isVoiceable } from "@/lib/text-gate";
 import { isModelVoice } from "@/lib/voices/voices";
 import type { Filter, LineFilters, ResultLine, SearchResult } from "@/lib/search";
+import { fetchRows, patchRows } from "@/lib/row-refresh";
 import { type Pending, receive, target, write } from "@/lib/url-echo";
 
 /** What a line's Regenerate button is doing, keyed by lineId. */
@@ -69,8 +73,7 @@ function filterParams(filters: LineFilters): URLSearchParams {
   if (filters.gender) params.set("gender", filters.gender);
   if (filters.flavor) params.set("flavor", filters.flavor);
   if (filters.voice) params.set("voice", filters.voice);
-  if (filters.kind) params.set("kind", filters.kind);
-  if (filters.source) params.set("source", filters.source);
+  if (filters.source?.length) params.set("source", filters.source.join(","));
   if (filters.npcType) params.set("type", filters.npcType);
   if (filters.includeProgress) params.set("progress", "1");
   if (filters.narration) params.set("narration", "1");
@@ -106,7 +109,22 @@ function speakerSpans(lines: ResultLine[]): number[] {
   return spans;
 }
 
-export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind }) {
+/**
+ * The URL change that narrows to one NPC.
+ *
+ * The entity type goes with the id because the two id spaces overlap - creature 68 is a
+ * Stormwind City Guard, gameobject 68 is a Wanted Poster - so the id alone would pull in a
+ * stranger.
+ */
+function npcNarrowing(line: ResultLine) {
+  return { q: String(line.npcId), filter: "npc", type: line.npcType };
+}
+
+function questNarrowing(line: ResultLine) {
+  return { q: String(line.questId), filter: "quest", type: undefined };
+}
+
+export default function Explorer({ facets }: { facets: Facets }) {
   const router = useRouter();
   const lang = useLang();
   const params = useSearchParams();
@@ -122,6 +140,8 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   // the generation settings have rather than the reach a rewrite has. Same gate as the API.
   const canConfigure = canConfigureGeneration(session?.user.role);
   const canIgnore = may("ignore");
+  // Who speaks a line holds in every language, as an NPC's answer does: admins only, as the API.
+  const canSpeakers = isAdmin(session?.user.role);
 
   // The URL is the source of truth for a search, so a result is linkable and survives a
   // reload; `query` is the uncommitted keystroke state in front of it.
@@ -132,9 +152,6 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   // rather than held in state, so the back button is a working undo for a filter too.
   const filters = useMemo<LineFilters>(
     () => ({
-      // From the page, not the URL: which explorer this is is where it lives, so a link
-      // carries it in its path.
-      kind,
       q: urlQuery,
       filter: (params.get("filter") as Filter) ?? "any",
       state: audioStateFromParams(params),
@@ -142,7 +159,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
       gender: params.get("gender") ?? undefined,
       flavor: params.get("flavor") ?? undefined,
       voice: params.get("voice") ?? undefined,
-      source: (params.get("source") as LineFilters["source"]) ?? undefined,
+      source: sourcesFromParam(params.get("source")),
       npcType: (params.get("type") as LineFilters["npcType"]) ?? undefined,
       includeProgress: params.get("progress") === "1",
       narration: params.get("narration") === "1",
@@ -158,7 +175,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
       recorded: RECORDED.find((value) => value === params.get("rec")),
       broadcast: BROADCAST_STATUSES.find((value) => value === params.get("bt")),
     }),
-    [kind, params, urlQuery],
+    [params, urlQuery],
   );
 
   const [query, setQuery] = useState(urlQuery);
@@ -174,12 +191,11 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   // Per-line regeneration state, and per-file version numbers used to bust the audio cache.
   const [lineStates, setLineStates] = useState<Record<string, LineState>>({});
   const [versions, setVersions] = useState<Record<string, number>>({});
-  // Bumped to fetch the page again after something changed what it shows -- a new take, a
-  // restore -- the way the zones and books explorers do. Take counts, staleness and the
-  // pronunciation mark all arrive on the rows themselves now; there is no second copy of
-  // them held here to keep in step.
+  // Bumped to fetch the page again after a recording upload, which can touch any row.
   const [refreshKey, setRefreshKey] = useState(0);
   const refetch = useCallback(() => setRefreshKey((key) => key + 1), []);
+  const resultRef = useRef(result);
+  resultRef.current = result;
   // What has been cleared since this page was fetched, laid over the rows' own marks until
   // the next fetch brings the acknowledgement back from the server.
   const { cleared, clear: clearDirty } = useClearDirty("quests");
@@ -187,29 +203,28 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   const [editing, setEditing] = useState<ResultLine | null>(null);
   // Another language's text or names, which are written as versions rather than as
   // English's overrides. See TranslateDialog.
-  const [translating, setTranslating] = useState<TranslateSubject | null>(null);
+  // `touches` picks the rows on this page that show what is being translated.
+  const [translating, setTranslating] = useState<{
+    subject: TranslateSubject;
+    touches: (row: ResultLine) => boolean;
+  } | null>(null);
   const editText = useCallback(
     (line: ResultLine) => {
       if (lang === BASE_LANG) {
         setEditing(line);
         return;
       }
-      setTranslating({
-        title: line.npcName,
-        subtitle: line.lineId,
-        english: line.english ? line.originalText : "There is no English line yet.",
-        current: line.missing?.text ? null : line.text,
-        endpoint: "/api/quests/lines/text",
-        address: { lineId: line.lineId, variant: line.variant ?? 0 },
-        field: "text",
-        multiline: true,
-      });
+      setTranslating({ subject: lineTextSubject(line), touches: (row) => row.lineId === line.lineId });
     },
     [lang],
   );
   const rename = useCallback((line: ResultLine, what: "npc" | "quest") => {
-    setTranslating(
-      what === "npc"
+    setTranslating({
+      touches:
+        what === "npc"
+          ? (row) => row.npcType === line.npcType && row.npcId === line.npcId
+          : (row) => row.questId === line.questId,
+      subject: what === "npc"
         ? nameSubject({
             kind: line.npcType,
             entityId: String(line.npcId),
@@ -226,9 +241,10 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
             english: line.english?.questTitle ?? "",
             current: line.missing?.questTitle ? null : line.questTitle,
           }),
-    );
+    });
   }, []);
   const [ignoring, setIgnoring] = useState<ResultLine | null>(null);
+  const [speakerDialog, setSpeakerDialog] = useState<{ line: ResultLine; replace: boolean } | null>(null);
   // Anyone can open this one, signed in or not - see ReportDialog.
   const [reporting, setReporting] = useState<ResultLine | null>(null);
   const [pendingBatch, setPendingBatch] = useState<
@@ -273,7 +289,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
    * a different result set is not where they were - and often does not exist. Only the pager
    * itself passes `page`.
    */
-  const updateUrl = useCallback(
+  const hrefFor = useCallback(
     (next: { page?: number } & Record<string, string | number | undefined>) => {
       const search = new URLSearchParams(params.toString());
 
@@ -289,9 +305,18 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
       // The current path, never a literal "/": this explorer was the site root until the
       // merge moved it to /quests, and a hardcoded "/" sent every narrowing click to the
       // landing page carrying the filters it was asked for.
-      router.replace(search.toString() ? `${pathname}?${search}` : pathname, { scroll: false });
+      return search.toString() ? `${pathname}?${search}` : pathname;
     },
-    [params, pathname, router],
+    [params, pathname],
+  );
+
+  const historyMode = useHistoryMode();
+
+  /** `typed` for the search box's own writes; see useHistoryMode. */
+  const updateUrl = useCallback(
+    (next: { page?: number } & Record<string, string | number | undefined>, typed = false) =>
+      router[historyMode(typed)](hrefFor(next), { scroll: false }),
+    [historyMode, hrefFor, router],
   );
 
   const updateFilters = useCallback(
@@ -305,7 +330,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
         ...("gender" in next ? { gender: next.gender } : {}),
         ...("flavor" in next ? { flavor: next.flavor } : {}),
         ...("voice" in next ? { voice: next.voice } : {}),
-        ...("source" in next ? { source: next.source } : {}),
+        ...("source" in next ? { source: next.source?.join(",") } : {}),
         ...("npcType" in next ? { type: next.npcType } : {}),
         ...("narration" in next ? { narration: next.narration ? "1" : undefined } : {}),
         ...("includeProgress" in next
@@ -341,8 +366,8 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   const clearAll = useCallback(() => {
     setQuery("");
     pending.current = write(pending.current, "");
-    router.replace(pathname, { scroll: false });
-  }, [pathname, router]);
+    router[historyMode(false)](pathname, { scroll: false });
+  }, [historyMode, pathname, router]);
 
   // Held in a ref so the debounce below restarts on keystrokes only. `updateUrl` changes
   // identity on every param change, and letting that reset the timer would let a filter
@@ -356,7 +381,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
     if (query === target(pending.current, urlQuery)) return;
     const timer = setTimeout(() => {
       pending.current = write(pending.current, query);
-      updateUrlRef.current({ q: query });
+      updateUrlRef.current({ q: query }, true);
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [query, urlQuery]);
@@ -423,6 +448,52 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   }, []);
 
   /**
+   * Fetch the rows `touches` picks again and swap them in where they sit. See lib/row-refresh.
+   *
+   * The id alone, not the page's filters, so a row the change moved out of the filter stays.
+   * `progress` and `ignored` because the search hides those rows unless asked.
+   */
+  const refreshRows = useCallback(
+    async (touches: (row: ResultLine) => boolean) => {
+      const rows = resultRef.current?.lines.filter(touches) ?? [];
+      if (!rows.length) return;
+      const ignored = new Set(rows.filter((row) => row.ignored).map((row) => row.lineId));
+      const fresh = await fetchRows<ResultLine>(
+        (id) => {
+          const search = new URLSearchParams({ line: id, progress: "1" });
+          if (ignored.has(id)) search.set("ignored", "1");
+          return withLang(lang, `/api/quests/search?${search}`);
+        },
+        rows.map((row) => row.lineId),
+      );
+      setResult((current) =>
+        current && { ...current, lines: patchRows(current.lines, fresh, (row) => row.lineId, (row) => row.key) },
+      );
+    },
+    [lang],
+  );
+
+  /**
+   * Take a speaker off a line. Every row of the line and of its file is fetched again: the
+   * speaker's row goes, and the file may pass to another speaker's voice.
+   */
+  const removeSpeaker = useCallback(
+    async (line: ResultLine) => {
+      const params = new URLSearchParams({ lineId: line.lineId, npcType: line.npcType, npcId: String(line.npcId) });
+      const response = await fetch(withLang(lang, `/api/quests/lines/speakers?${params}`), { method: "DELETE" }).catch(
+        () => null,
+      );
+      if (!response?.ok) {
+        const body = (await response?.json().catch(() => ({}))) as { error?: string } | undefined;
+        setQueueNote(body?.error ?? "Could not take the speaker off.");
+        return;
+      }
+      void refreshRows((row) => row.lineId === line.lineId || row.audioPath === line.audioPath);
+    },
+    [lang, refreshRows],
+  );
+
+  /**
    * Adopt an ignore decision without a reload.
    *
    * The row stays where it is rather than vanishing: a search is a snapshot, and having the
@@ -453,9 +524,9 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   const handleRestored = useCallback(
     (file: string, version: number) => {
       setVersions((current) => ({ ...current, [file]: version }));
-      refetch();
+      void refreshRows((row) => row.audioPath === file);
     },
-    [refetch],
+    [refreshRows],
   );
 
   /**
@@ -486,22 +557,27 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
       // otherwise be blocked for the wrong reason - "no voice named orc-male-shady" when
       // the truth is that nothing has been asked.
       if (!status) return null;
-      // Named for the generator this collaborator has chosen, not always ElevenLabs: someone
-      // on fish.audio with a key and references was otherwise told to go and set up a
-      // provider they do not use.
-      const provider = PROVIDER_NAME[status.provider];
+      // A voice pinned to fish.audio is spoken there whatever this collaborator chose, so it
+      // is fish.audio's key and references that decide, exactly as the server will.
+      const pinned = status.pinned?.voices.includes(line.voice) ? status.pinned : null;
+      const fish = pinned !== null || status.provider === "fish";
+      // Named for the generator this line goes to, not always ElevenLabs: someone on
+      // fish.audio with a key and references was otherwise told to go and set up a provider
+      // they do not use.
+      const provider = PROVIDER_NAME[fish ? "fish" : status.provider];
+      const voices = pinned ? pinned.references : status.voices;
       const missing = (voice: string) =>
-        status.provider === "fish"
+        fish
           ? `No fish.audio reference for "${voice}" in this language yet — cut one on /voices`
           : `No ElevenLabs voice named "${voice}" yet — create it on /voices`;
-      if (status.noApiKey) {
-        return `No ${provider} key on your account — set one in your profile`;
+      if (pinned ? pinned.noApiKey : status.noApiKey) {
+        return `${pinned ? `${line.voice} is pinned to fish.audio: n` : "N"}o ${provider} key on your account — set one in your profile`;
       }
-      if (!status.voices.includes(line.voice)) {
+      if (!voices.includes(line.voice)) {
         return missing(line.voice);
       }
       // A narrated line needs both voices, and the server refuses it for the same reason.
-      if (line.narration && !status.voices.includes(NARRATOR_VOICE)) {
+      if (line.narration && !voices.includes(NARRATOR_VOICE)) {
         return `Narrated line: ${missing(NARRATOR_VOICE)}`;
       }
       return null;
@@ -518,12 +594,12 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
   const applySuccess = useCallback(
     (file: string, version: number, lineId: string) => {
       // The version busts the audio cache at once; everything else the row shows -- that it
-      // has audio, how many takes, whether it is stale -- comes back with the refetch.
+      // has audio, how many takes, whether it is stale -- comes back with the rows.
       setVersions((current) => ({ ...current, [file]: version }));
       setLineStates((current) => ({ ...current, [lineId]: { phase: "done", version } }));
-      refetch();
+      void refreshRows((row) => row.audioPath === file || row.lineId === lineId);
     },
-    [refetch],
+    [refreshRows],
   );
 
   /**
@@ -639,14 +715,20 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
       // the list rate, which overstates - the right direction for a number meant to give
       // someone pause.
       const rate = status?.rate ?? { rate: LIST_RATE, samples: 0, modelId: null };
+      // Pinned voices' lines are priced apart, in fish.audio's dollars: credits and dollars
+      // are never added together.
+      const pinned = status?.pinned ?? null;
+      const isPinned = (job: (typeof batch.jobs)[number]) => pinned?.voices.includes(job.voice) ?? false;
+      const priced = (jobs: typeof batch.jobs) =>
+        jobs.map((job) => ({ file: job.audioPath, characters: job.characters }));
+      const fishJobs = batch.jobs.filter(isPinned);
       return {
         ...open,
         matched: batch.matched,
         skipped: batch.skipped,
-        estimate: estimateBatch(
-          batch.jobs.map((job) => ({ file: job.audioPath, characters: job.characters })),
-          rate,
-        ),
+        estimate: estimateBatch(priced(batch.jobs.filter((job) => !isPinned(job))), rate),
+        pinnedEstimate:
+          pinned && fishJobs.length > 0 ? estimateBatch(priced(fishJobs), pinned.rate) : null,
       };
     });
   }, [filterQuery, status, lang]);
@@ -696,32 +778,19 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
     queueMicrotask(() => void audio.current?.play().catch(() => {}));
   }, []);
 
-  /**
-   * Narrow to one NPC.
-   *
-   * The entity type goes with the id because the two id spaces overlap - creature 68 is a
-   * Stormwind City Guard, gameobject 68 is a Wanted Poster - so the id alone would pull in a
-   * stranger.
-   */
-  const narrowToNpc = useCallback(
-    (line: ResultLine) => {
-      setQuery(String(line.npcId));
-      pending.current = write(pending.current, String(line.npcId));
-      updateUrl({ q: String(line.npcId), filter: "npc", type: line.npcType });
+  const narrowTo = useCallback(
+    (next: { q: string } & Record<string, string | undefined>) => {
+      setQuery(next.q);
+      pending.current = write(pending.current, next.q);
+      updateUrl(next);
     },
     [updateUrl],
   );
 
-  const narrowToQuest = useCallback(
-    (line: ResultLine) => {
-      if (line.questId === null) return;
-      const q = String(line.questId);
-      setQuery(q);
-      pending.current = write(pending.current, q);
-      updateUrl({ q, filter: "quest", type: undefined });
-    },
-    [updateUrl],
-  );
+  const narrowToNpc = useCallback((line: ResultLine) => narrowTo(npcNarrowing(line)), [narrowTo]);
+  const narrowToQuest = useCallback((line: ResultLine) => narrowTo(questNarrowing(line)), [narrowTo]);
+  const npcHref = useCallback((line: ResultLine) => hrefFor(npcNarrowing(line)), [hrefFor]);
+  const questHref = useCallback((line: ResultLine) => hrefFor(questNarrowing(line)), [hrefFor]);
 
   // A flat, in-display-order list of what can actually be played, for j/k. This page only:
   // paging is a deliberate act, not something arrow keys should do behind your back.
@@ -742,14 +811,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      // The shadcn Select trigger is a <button role="combobox">, not a <select>, so
-      // checking tagName alone would let space both toggle audio and open the dropdown.
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      const typing =
-        !!target &&
-        (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
-          target.isContentEditable ||
-          !!target.closest('[role="combobox"],[role="listbox"],[role="dialog"]'));
+      const typing = isTypingTarget(event.target);
 
       if (event.key === "/" && !typing) {
         event.preventDefault();
@@ -811,7 +873,6 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
           canTriage={showRegenerate}
           madeBy={result?.madeBy}
           recordable={showRecordings}
-          broadcastable={kind === "gossip"}
         />
 
         {showRecordings && <RecordingDropZone source="quests" onUploaded={refetch} />}
@@ -876,8 +937,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
           >
             <colgroup>
               <col className="w-52" />
-              {kind !== "gossip" && <col className="w-48" />}
-              {kind === "gossip" && <col className="w-24" />}
+              <col className="w-48" />
               <col className="w-32" />
               {/* The line text takes whatever the named columns leave, which is what anyone
                   here to read came for. */}
@@ -898,8 +958,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
             <thead>
               <tr className="text-muted-foreground border-border border-b text-left text-xs">
                 <th className="px-2 pb-1 font-medium">NPC / object</th>
-                {kind !== "gossip" && <th className="px-2 pb-1 font-medium">Quest</th>}
-                {kind === "gossip" && <th className="px-2 pb-1 font-medium">Broadcast</th>}
+                <th className="px-2 pb-1 font-medium">Quest / broadcast</th>
                 <th className="px-2 pb-1 font-medium">Race / gender / flavor</th>
                 <th className="px-2 pb-1 font-medium">Line</th>
                 <th className="px-2 pb-1 font-medium">Audio</th>
@@ -916,7 +975,7 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
                   current={line.key === current?.key}
                   showMadeBy={showMadeBy}
                   showRecordings={showRecordings}
-                  onRecordingChanged={refetch}
+                  onRecordingChanged={(l) => void refreshRows((row) => row.audioPath === l.audioPath)}
                   canRegenerate={showRegenerate}
                   canEdit={canEdit}
                   canTriage={canEdit}
@@ -931,14 +990,18 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
                   onEditText={editText}
                   onRename={lang !== BASE_LANG && canEdit ? rename : null}
                   onIgnore={canIgnore ? setIgnoring : null}
+                  onAddSpeaker={canSpeakers ? (l) => setSpeakerDialog({ line: l, replace: false }) : null}
+                  onReplaceSpeaker={canSpeakers ? (l) => setSpeakerDialog({ line: l, replace: true }) : null}
+                  onRemoveSpeaker={canSpeakers ? (l) => void removeSpeaker(l) : null}
                   onReport={setReporting}
                   onRegenerate={regenerateLine}
                   onRestored={handleRestored}
                   onNarrowToNpc={narrowToNpc}
-                  showQuest={kind !== "gossip"}
-                  showBroadcast={kind === "gossip"}
+                  npcHref={npcHref}
+                  showNpcPage={isAdmin(session?.user.role)}
                   groupSpan={groupSpans[index]}
                   onNarrowToQuest={narrowToQuest}
+                  questHref={questHref}
                 />
               ))}
             </tbody>
@@ -966,21 +1029,39 @@ export default function Explorer({ facets, kind }: { facets: Facets; kind: Kind 
       <OverrideDialog
         line={editing}
         onSaved={handleOverrideSaved}
+        onRewritten={() => {
+          const file = editing?.audioPath;
+          setEditing(null);
+          void refreshRows((row) => row.audioPath === file);
+        }}
         onCancel={() => setEditing(null)}
       />
 
       <TranslateDialog
-        subject={translating}
+        subject={translating?.subject ?? null}
         onClose={() => setTranslating(null)}
-        // A name is on many rows and a line's text changes whether it can be voiced, so the
-        // page is fetched again rather than patched.
-        onSaved={() => refetch()}
+        // Fetched again rather than patched: a line's text changes whether it can be voiced.
+        onSaved={() => {
+          if (translating) void refreshRows(translating.touches);
+        }}
       />
 
       <IgnoreDialog
         line={ignoring}
         onSaved={handleIgnoreSaved}
         onCancel={() => setIgnoring(null)}
+      />
+
+      <AddSpeakerDialog
+        line={speakerDialog?.line ?? null}
+        replace={speakerDialog?.replace}
+        // Fetched again: a speaker in another voice is a new row of its own.
+        onSaved={() => {
+          const line = speakerDialog?.line;
+          setSpeakerDialog(null);
+          if (line) void refreshRows((row) => row.lineId === line.lineId || row.audioPath === line.audioPath);
+        }}
+        onCancel={() => setSpeakerDialog(null)}
       />
 
       <ReportDialog

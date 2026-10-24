@@ -9,7 +9,7 @@ local SPOKEN = here .. "/../../addons/Spoken/"
 local QUESTS = here .. "/../../addons/Spoken_Quests/"
 local Expect, Failures = H.Expecter(print)
 
-stub.SetClient("11509")
+stub.SetClient("16001")
 -- The loader quest_dispatch_test.lua and quest_overlay_test.lua use: it boots the player
 -- itself, so there is no separate stub.LoadSpoken call here.
 local VoiceOver = stub.LoadQuests(QUESTS, SPOKEN)
@@ -33,6 +33,7 @@ world.npcGUID = "Creature-0-0-0-0-12345-0"
 stub.ShowPanel("QuestFrameDetailPanel")
 
 local envelope = VoiceOver.Contribute:Capture()
+H.WriteCapturedFixture(here, "quests-accept", envelope)
 Expect("the source is quests", envelope:match("^!SPOKEN1 quests\n") ~= nil, true)
 Expect("the quest id is carried", envelope:match("\nquest=9123\n") ~= nil, true)
 Expect("the event is the panel on screen", envelope:match("\nevent=accept\n") ~= nil, true)
@@ -50,11 +51,31 @@ Expect("the addon field carries the real .toc version, not the \"dev\" fallback"
 stub.HidePanels()
 stub.ShowGossip("We stand ready.")
 local gossip = VoiceOver.Contribute:Capture()
+H.WriteCapturedFixture(here, "quests-gossip", gossip)
 Expect("gossip carries the npc and no quest", gossip:match("\nquest=") == nil, true)
 Expect("...and the gossip text", gossip:match("\nWe stand ready%.\n") ~= nil, true)
 
 stub.HidePanels()
 Expect("nothing on screen contributes nothing", VoiceOver.Contribute:Capture(), nil)
+
+---------------------------------------------------------------- what a report carries
+-- The window on screen when it still shows the clip, so the NPC can be observed.
+stub.ShowPanel("QuestFrameDetailPanel")
+local clip = { questID = 9123, event = VoiceOver.Enums.SoundEvent.QuestAccept, unitGUID = world.npcGUID,
+    name = "Deathguard Linnea", title = "A Rough Start", text = "Kill six of them, Tester." }
+local onScreen = VoiceOver.Contribute:ReportContext(clip)
+Expect("a report on the clip on screen reads the window", onScreen
+    and onScreen:match("\nKill six of them%.\nThen come back%.\n") ~= nil, true)
+
+-- Report is offered after the window closes: the clip as it remembers itself.
+stub.HidePanels()
+local remembered = VoiceOver.Contribute:ReportContext(clip)
+Expect("...a closed window's clip from what it remembers", remembered
+    and remembered:match("\nquest=9123\nevent=accept\nnpc=12345 Deathguard Linnea\ntitle=A Rough Start\n") ~= nil, true)
+Expect("...its text with the reader put back as a token", remembered
+    and remembered:match("\nKill six of them, %$N%.\n") ~= nil, true)
+Expect("...and the addon version", remembered and remembered:match("\naddon=SpokenQuests/9%.9%.9\n") ~= nil, true)
+Expect("nothing on screen and no clip reports no context", VoiceOver.Contribute:ReportContext(nil), nil)
 
 ---------------------------------------------------------------- the reader put back as tokens
 -- The client expands $N, $C and $R to whoever is reading, so the text is sent with the
@@ -72,6 +93,23 @@ world.questText = "Eine Kriegerin, Tester."
 local inflected = VoiceOver.Contribute:Capture()
 Expect("...and the class in either gender's form", inflected:match("\nEine %$C, %$N%.\n") ~= nil, true)
 _G.LOCALIZED_CLASS_NAMES_FEMALE = nil
+
+-- A quest only the reader's class can take says the class as its own word, not as the reader's.
+world.playerClass, world.playerClassFile, world.playerClassID = "Paladin", "PALADIN", 2
+world.questText = "Tester, a paladin must reflect the Light."
+_G.SpokenQuestsCompendium = { quests = { [9123] = { "A Rough Start", classes = 2 } } }
+Expect("a quest only that class can take keeps the class as written",
+    VoiceOver.Contribute:Capture():match("\n([^\n]*Light%.)\n"), "$N, a paladin must reflect the Light.")
+Expect("...also from the quest log",
+    VoiceOver.Contribute:Detemplate("A paladin, Tester.", 9123), "A paladin, $N.")
+_G.SpokenQuestsCompendium.quests[9123].classes = 2 + 4
+Expect("a quest two classes can take still puts the reader's class back",
+    VoiceOver.Contribute:Capture():match("\n([^\n]*Light%.)\n"), "$N, a $c must reflect the Light.")
+_G.SpokenQuestsCompendium.quests[9123].classes = nil
+Expect("...as does a quest open to every class",
+    VoiceOver.Contribute:Capture():match("\n([^\n]*Light%.)\n"), "$N, a $c must reflect the Light.")
+_G.SpokenQuestsCompendium = nil
+world.playerClassID = nil
 
 world.playerName = "Valaas Dawnsight"
 world.questText = "Greetings, young Valaas. The Dawnsight name is known, Valaas Dawnsight."
@@ -268,6 +306,7 @@ Expect("firing the callback hides the probe immediately, before any click",
     stub.playerModel and stub.playerModel.shown, false)
 
 local seen = VoiceOver.Contribute:Capture()
+H.WriteCapturedFixture(here, "quests-observed", seen)
 Expect("the model file id is reported once the load has fired", seen:match("\nmodel=122055\n") ~= nil, true)
 Expect("the sex the client reports is carried too", seen:match("\nsex=2\n") ~= nil, true)
 Expect("the creature type is carried", seen:match("\ncreature=Humanoid\n") ~= nil, true)
@@ -344,9 +383,9 @@ Expect("the same guid still resolves once the model actually loads",
 
 ---------------------------------------------------------- retargeting mid-load
 -- Switching to a different NPC before the current one's load resolves is ordinary play, not
--- an edge case -- quickly glancing between two quest givers. The abandoned guid must still be
--- finalised (cached as whatever it resolved to, or as a miss), or the probe would stay shown
--- and associated with a target no longer even on screen every time this happens.
+-- an edge case -- quickly glancing between two quest givers. The probe must be put away from
+-- the one left, which has not had its chance to load, so it is loaded again when returned to;
+-- and glancing back and forth must still end, with each guid loaded twice at most.
 stub.modelCallbackDisabled = true
 world.modelFileID = nil
 local retargetSetUnitBefore = stub.SetUnitCount and stub.SetUnitCount() or 0
@@ -362,13 +401,18 @@ Expect("retargeting before it resolves is still a gap", VoiceOver.Contribute:Has
 Expect("retargeting still only calls SetUnit once for the new NPC",
     (stub.SetUnitCount and stub.SetUnitCount() or 0), retargetSetUnitBefore + 2)
 
--- The abandoned NPC was finalised on the switch, not left in limbo: returning to it reads
--- the cache rather than priming it again, and finalises the OTHER one in turn.
 world.npcGUID = "Creature-0-0-0-0-90007-0"
 world.npcName = "Ding"
-Expect("returning to the abandoned NPC is still a gap", VoiceOver.Contribute:HasGap(), true)
-Expect("...but does not prime it again -- it was finalised, not forgotten, when abandoned",
-    (stub.SetUnitCount and stub.SetUnitCount() or 0), retargetSetUnitBefore + 2)
+Expect("returning to the NPC left is still a gap", VoiceOver.Contribute:HasGap(), true)
+Expect("...and loads it again, as it was left before its model was in",
+    (stub.SetUnitCount and stub.SetUnitCount() or 0), retargetSetUnitBefore + 3)
+
+world.npcGUID = "Creature-0-0-0-0-90008-0"
+VoiceOver.Contribute:HasGap()
+world.npcGUID = "Creature-0-0-0-0-90007-0"
+VoiceOver.Contribute:HasGap()
+Expect("glancing back and forth loads each NPC twice at most",
+    (stub.SetUnitCount and stub.SetUnitCount() or 0), retargetSetUnitBefore + 4)
 local backToDing = VoiceOver.Contribute:Capture()
 Expect("its model resolved to a miss rather than staying unresolved forever",
     backToDing:match("\nmodel=") == nil, true)
@@ -421,6 +465,15 @@ Expect("...having called SetUnit only the original once",
     (stub.SetUnitCount and stub.SetUnitCount() or 0), giveUpSetUnitBefore + 1)
 local gaveUp = VoiceOver.Contribute:Capture()
 Expect("a guid that gave up is omitted, not sent as 0", gaveUp:match("\nmodel=") == nil, true)
+-- One load given up is not the answer yet: the next refresh loads it once more, and only that
+-- one giving up as well caches the miss.
+Expect("the next refresh is still a gap", VoiceOver.Contribute:HasGap(), true)
+Expect("...and loads it a second time",
+    (stub.SetUnitCount and stub.SetUnitCount() or 0), giveUpSetUnitBefore + 2)
+VoiceOver.Contribute:HasGap()
+VoiceOver.Contribute:HasGap()
+Expect("given up twice, the probe is put away",
+    stub.playerModel and stub.playerModel.shown, false)
 
 stub.modelCallbackDisabled = false
 
@@ -469,8 +522,7 @@ Expect("...and the probe is put away even though nothing ever resolved it",
 Expect("...without spending a SetUnit to do it",
     (stub.SetUnitCount and stub.SetUnitCount() or 0), closeSetUnitBefore + 1)
 
--- Abandoned, not resolved: the old rule (only MAX_LOAD_REFRESHES's give-up caches a miss)
--- still holds, so coming back to the same NPC primes it again -- one extra SetUnit -- rather
+-- Abandoned, not resolved: only running out of load attempts caches a miss, so coming back to the same NPC primes it again -- one extra SetUnit -- rather
 -- than reading a cached "no model" that this guid was never actually given the chance to earn.
 stub.ShowPanel("QuestFrameDetailPanel")
 world.modelStillLoading = false
@@ -548,6 +600,7 @@ _G.C_Container = {
 }
 stub.ShowPanel("QuestFrameDetailPanel")
 local item = VoiceOver.Contribute:Capture()
+H.WriteCapturedFixture(here, "quests-item", item)
 Expect("an item that starts the quest is reported as an item", item:match("\nkind=item\n") ~= nil, true)
 Expect("...named by the bag item whose quest is on screen",
     item:match("\nnpc=211315 Underground Map\n") ~= nil, true)
@@ -580,6 +633,76 @@ for _, hook in ipairs(_G.GossipFrame.hooks.OnHide or {}) do hook(_G.GossipFrame)
 Expect("closing the window with no event takes the button with it", lingering:IsShown(), false)
 stub.FireEvent("QUEST_FINISHED")
 Expect("...and no later event brings it back while nothing is open", lingering:IsShown(), false)
+
+---------------------------------------------------------- a body its voice is not
+-- A Reveler voiced as a dwarf and drawn as a gnome: its line plays, so nothing is missing, but
+-- only its model shows it is a body the site has no voice for. The model is read on the dialog
+-- opening, and the button comes up once it is in.
+local pack = VoiceOver.DataModules:GetModule("TestPack")
+local HASH = string.rep("b", 32)
+pack.SoundLengthLookupByFileName[HASH] = 2
+pack.GossipLookupByNPCID = { [15906] = { ["Prosit!"] = HASH } }
+pack.NPCBodiesByNPCID = { [15906] = { ["dwarf-male"] = true } }
+pack.BodyByModelFileID = { [119159] = "gnome-male", [118355] = "dwarf-male" }
+stub.HidePanels()
+world.npcName, world.npcGUID = "Ironforge Reveler", "Creature-0-0-0-0-15906-0"
+world.modelFileID, world.modelStillLoading, world.unitSex = 119159, true, 2
+local bodySetUnits = stub.SetUnitCount()
+stub.ShowGossip("Prosit!")
+stub.FireEvent("GOSSIP_SHOW")
+local bodyButton = VoiceOver.ContributeButton.button
+Expect("a voiced line whose model is not in yet offers nothing", bodyButton:IsShown(), false)
+Expect("...but its model is asked for, though nothing is missing", stub.SetUnitCount(), bodySetUnits + 1)
+Expect("...and kept loading", VoiceOver.NPCModel:IsLoading(), true)
+world.modelStillLoading = false
+stub.FinishModelLoad()
+Expect("drawn as a gnome, the button comes up once the model is in", bodyButton:IsShown(), true)
+stub.FireEvent("GOSSIP_SHOW")
+Expect("...without loading it again", stub.SetUnitCount(), bodySetUnits + 1)
+
+stub.HidePanels()
+world.npcGUID = "Creature-0-0-0-0-15906-1"
+world.modelFileID = 118355
+stub.ShowGossip("Prosit!")
+stub.FireEvent("GOSSIP_SHOW")
+stub.FinishModelLoad()
+Expect("drawn as a dwarf, the body its voice is, nothing is offered", bodyButton:IsShown(), false)
+
+-- With the buttons hidden and nothing gathered, a creature's body is only worth its model where
+-- the model picks the file it plays: a split creature.
+SpokenEnv.Addon.db.profile.Contribute.HideButtons = true
+stub.HidePanels()
+world.npcGUID = "Creature-0-0-0-0-15906-2"
+stub.ShowGossip("Prosit!")
+local hiddenSetUnits = stub.SetUnitCount()
+VoiceOver.Contribute:HasGap()
+Expect("buttons hidden, an unsplit creature's model is not read", stub.SetUnitCount(), hiddenSetUnits)
+pack.GossipFileLookupByNPCBody = { [15906] = { ["dwarf-male"] = { [HASH] = HASH } } }
+VoiceOver.Contribute:HasGap()
+Expect("...but a split creature's is", stub.SetUnitCount(), hiddenSetUnits + 1)
+stub.FinishModelLoad()
+pack.GossipFileLookupByNPCBody = nil
+SpokenEnv.Addon.db.profile.Contribute.HideButtons = false
+stub.HidePanels()
+stub.FireEvent("GOSSIP_CLOSED")
+
+-- A creature whose bodies are listed keeps its load through its dialog closing, so a client
+-- that never says the model is in still has the probe put away, within two seconds.
+stub.ResetTimers()
+local closedGUID = "Creature-0-0-0-0-15906-3"
+world.npcGUID = closedGUID
+world.modelFileID, world.modelStillLoading = 119159, true
+stub.ShowGossip("Prosit!")
+stub.FireEvent("GOSSIP_SHOW")
+Expect("a listed-body creature's dialog loads its model", VoiceOver.NPCModel:IsLoading(closedGUID), true)
+stub.HidePanels()
+stub.FireEvent("GOSSIP_CLOSED")
+stub.Advance(2.1)
+Expect("closed before its model is in, two seconds on nothing is loading",
+    VoiceOver.NPCModel:IsLoading(), false)
+Expect("...and the probe is put away", stub.playerModel.shown, false)
+world.modelStillLoading = false
+world.modelFileID = nil
 
 SpokenEnv.Spoken.Gather:SetEnabled(true)
 

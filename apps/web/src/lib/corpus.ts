@@ -40,6 +40,13 @@ export type CorpusLine = {
    * because many tests build a CorpusLine by hand for questions this has no bearing on.
    */
   contributionId?: number | null;
+  /** An admin added this speaker by hand in the explorer (migration 0076), and may take it back. */
+  added?: boolean;
+  /**
+   * No other NPC speaks this line's moment, so the explorer offers no way to take this one off:
+   * a line is there only through its speakers.
+   */
+  soleSpeaker?: boolean;
   /**
    * What a language other than English has not translated yet. The row then carries the
    * English in its place, for the explorer to show and mark -- never to voice: a line whose
@@ -58,8 +65,10 @@ export type CorpusLine = {
    * language's word (player-words.ts), so the gate has to know which. Absent means English.
    */
   lang?: Lang;
-  /** The sex this row is for (2 man, 3 woman), on an NPC split by sex only. */
+  /** The sex this row is for (2 man, 3 woman), on an NPC split by body. */
   npcSex?: 2 | 3;
+  /** The body this row is for ("gnome-female"), on an NPC split by body. */
+  npcBody?: string;
   /**
    * The English names, for a translator to work from. Absent when reading English, and on a
    * line only this language has.

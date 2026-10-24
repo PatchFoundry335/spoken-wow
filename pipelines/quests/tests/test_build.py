@@ -180,23 +180,21 @@ def test_toc_declares_both_generations_of_the_module_key():
     for suffix, value in (("Version", "1"), ("Priority", "100")):
         assert f"## X-SpokenQuests-DataModule-{suffix}: {value}\n" in toc
         assert f"## X-VoiceOver-DataModule-{suffix}: {value}\n" in toc
-    assert toc.count("-DataModule-Maps: ") == 2
-    # The two generations must agree, or the pack means one thing to each reader.
-    maps = [line.split(": ", 1)[1] for line in toc.splitlines() if "-DataModule-Maps: " in line]
-    assert maps[0] == maps[1]
+    # A map list would be read and never used: every pack loads on every map.
+    assert "-DataModule-Maps" not in toc
 
 
-def test_toc_nests_the_pack_under_the_player():
+def test_toc_nests_the_pack_under_spoken():
     # Group is the one the client reads (11.1.0+), and its value is the main addon's *name*,
     # so it is the folder and not the title. X-Part-Of carries the title for addon managers,
     # and X-Child-Of a folder again. Three keys a rename can silently swap between.
     toc = module_toc("VoiceOverReduxAudio", [])
 
-    # The folder the packs nest under is the addon's, which the rename moved; the pack
-    # folders themselves did not move, so these are the only names here that change.
-    assert "## Group: SpokenQuests\n" in toc
+    # Every addon and pack sits in the one Spoken group. Named after SpokenQuests, itself a
+    # member of that group, the packs showed at the top of the list instead.
+    assert "## Group: Spoken\n" in toc
     assert "## X-Part-Of: Spoken\n" in toc
-    assert "## X-Child-Of: SpokenQuests\n" in toc
+    assert "## X-Child-Of: Spoken_Quests\n" in toc
 
 
 def test_install_refuses_to_replace_without_force(tmp_path):
@@ -268,3 +266,45 @@ def test_a_gendered_twin_keeps_the_entry_its_own_line_still_needs():
 
 def test_ignoring_nothing_leaves_every_table_as_it_was():
     assert build_tables(CORPUS, ()) == build_tables(CORPUS)
+
+
+WORDINGS = {"lines": [
+    {"lineId": "q:20:accept", "source": "accept", "questId": 20, "questTitle": "T",
+     "npcId": 1, "npcName": "Celindra", "npcType": "creature", "fileName": "20-accept",
+     "originalText": "You are the Horde, $c.", "generatable": True},
+    {"lineId": "q:20:accept:w1", "source": "accept", "questId": 20, "questTitle": "T",
+     "npcId": 2, "npcName": "Modera", "npcType": "creature", "fileName": "20-accept-w1",
+     "originalText": "Oh, you are back.", "generatable": True},
+    {"lineId": "q:20:accept:w1~orc-male-standard", "source": "accept", "questId": 20,
+     "questTitle": "T", "npcId": 3, "npcName": "Grunt", "npcType": "creature",
+     "fileName": "20-accept-w1-orc-male-standard", "originalText": "Oh, you are back.",
+     "generatable": True},
+    {"lineId": "q:21:progress", "source": "progress", "questId": 21, "questTitle": "T",
+     "npcId": 1, "npcName": "Celindra", "npcType": "creature", "fileName": "21-progress",
+     "originalText": "Well?", "generatable": False},
+    {"lineId": "q:21:progress:w1", "source": "progress", "questId": 21, "questTitle": "T",
+     "npcId": 2, "npcName": "Modera", "npcType": "creature", "fileName": "21-progress-w1",
+     "originalText": "Back so soon?", "generatable": False},
+]}
+
+
+def _wording_tables(corpus=WORDINGS, ignored=()):
+    return {name: data for name, (_, data) in build_tables(corpus, ignored).items()}
+
+
+def test_a_moment_s_wordings_map_each_text_to_its_file():
+    assert _wording_tables()["quest_wording_lookups"] == {
+        "20-accept": {"You are the Horde, $c.": "20-accept", "Oh, you are back.": "20-accept-w1"},
+    }
+
+
+def test_a_moment_with_one_wording_ships_none():
+    assert "5-accept" not in _tables()["quest_wording_lookups"]
+
+
+def test_a_wording_s_giver_of_another_voice_finds_its_own_file():
+    assert _wording_tables()["npc_quest_file_lookups"]["20-accept-w1"][3] == "20-accept-w1-orc-male-standard"
+
+
+def test_an_ignored_wording_leaves_one_and_no_table():
+    assert "20-accept" not in _wording_tables(ignored={"q:20:accept:w1"})["quest_wording_lookups"]

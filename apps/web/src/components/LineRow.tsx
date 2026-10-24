@@ -4,6 +4,7 @@ import ActorTakeCell from "@/components/ActorTakeCell";
 import { MadeByCell } from "@/components/MadeBy";
 import { RenameButton } from "@/components/RenameButton";
 import { Untranslated, UntranslatedMark } from "@/components/Untranslated";
+import FilterLink from "@/components/FilterLink";
 import { useLang } from "@/components/LangProvider";
 import { localeHref } from "@/lib/lang";
 import {
@@ -15,17 +16,22 @@ import {
   MessageSquareQuoteIcon,
   PencilIcon,
   PlayIcon,
+  RepeatIcon,
+  UserPlusIcon,
+  XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import ReportsBadge from "./ReportsBadge";
 import TakeSelector from "./TakeSelector";
 import RegenerateButton from "./RegenerateButton";
 import { Button } from "./ui/button";
 import { targetForLine } from "@/lib/reports/line-target";
-import { cn } from "@/lib/utils";
+import { cn, endsSelection } from "@/lib/utils";
 import type { LineState } from "./Explorer";
 import type { ResultLine } from "@/lib/search";
+import OutdatedNote from "@/components/OutdatedNote";
+import { npcPageHref } from "@/lib/links";
 import { wowheadEntityUrl, wowheadQuestUrl } from "@/lib/wowhead";
 
 /**
@@ -111,7 +117,7 @@ type Props = {
   showMadeBy: boolean;
   /** Whether to draw the voice actor cell: the search sent recordings, so the viewer records here. */
   showRecordings: boolean;
-  onRecordingChanged: () => void;
+  onRecordingChanged: (line: ResultLine) => void;
   canRegenerate: boolean;
   /** May write this line's text in the page's language. Apart from regenerating: a
    *  translator may do this and not spend anything. */
@@ -140,22 +146,26 @@ type Props = {
   onRename: ((line: ResultLine, what: "npc" | "quest") => void) | null;
   /** Open the ignore dialog, or null for anyone not allowed to make that decision. */
   onIgnore: ((line: ResultLine) => void) | null;
+  /** Add another NPC who says this line, put one in this speaker's place, or take it off. Null but for an admin. */
+  onAddSpeaker: ((line: ResultLine) => void) | null;
+  onReplaceSpeaker: ((line: ResultLine) => void) | null;
+  onRemoveSpeaker: ((line: ResultLine) => void) | null;
   onRegenerate: (line: ResultLine) => void;
   /** Open the report dialog. Everyone gets this, signed in or not. */
   onReport: (line: ResultLine) => void;
   onRestored: (file: string, version: number) => void;
-  /** False in the gossip explorer, where no line has a quest. */
-  showQuest: boolean;
-  /** True in the gossip explorer: the BroadcastText ids each line speaks. */
-  showBroadcast: boolean;
   /**
    * Rows of one line and speaker (its player-gender wordings) share the speaker cells: the
    * first row spans this many rows, and the rest pass 0 and leave those cells out.
    */
   groupSpan: number;
-  /** Narrow the search to this line's NPC, or to its quest. */
+  /** Whether the NPC's id links to its row on /npcs, which only an admin can open. */
+  showNpcPage?: boolean;
+  /** Narrow the search to this line's NPC, or to its quest; the hrefs open that view elsewhere. */
   onNarrowToNpc: (line: ResultLine) => void;
   onNarrowToQuest: (line: ResultLine) => void;
+  npcHref: (line: ResultLine) => string;
+  questHref: (line: ResultLine) => string;
   /** Say this take is fine as it stands, despite a pronunciation having moved under it. */
   onClearDirty: (line: ResultLine) => void;
 };
@@ -181,6 +191,20 @@ function WowheadLink({ href }: { href: string }) {
   );
 }
 
+function SpeakerAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="hover:text-foreground ml-1 inline-flex align-middle"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function LineRow({
   line,
   current,
@@ -200,14 +224,18 @@ export default function LineRow({
   onEditText,
   onRename,
   onIgnore,
+  onAddSpeaker,
+  onReplaceSpeaker,
+  onRemoveSpeaker,
   onRegenerate,
   onReport,
   onRestored,
   onNarrowToNpc,
-  showQuest,
-  showBroadcast,
+  showNpcPage = false,
   groupSpan,
   onNarrowToQuest,
+  npcHref,
+  questHref,
   onClearDirty,
 }: Props) {
   const missing = absence(line);
@@ -227,7 +255,7 @@ export default function LineRow({
   function toggleFromRow(event: React.MouseEvent<HTMLTableRowElement>) {
     const target = event.target as HTMLElement | null;
     if (target?.closest("button, a, input, textarea, select, [role='dialog']")) return;
-    if (!window.getSelection()?.isCollapsed) return;
+    if (endsSelection()) return;
     setExpanded((open) => !open);
   }
 
@@ -244,37 +272,73 @@ export default function LineRow({
     >
       {spanned && (
         <td rowSpan={groupSpan} className="px-2 py-2">
-          <button
+          <FilterLink
+            href={npcHref(line)}
+            onApply={() => onNarrowToNpc(line)}
             className="hover:text-foreground block max-w-full truncate text-left underline-offset-2 hover:underline"
             title={`Show only ${line.npcName}`}
-            onClick={() => onNarrowToNpc(line)}
           >
             <Untranslated missing={line.missing?.npcName}>{line.npcName}</Untranslated>
-          </button>
+          </FilterLink>
           {onRename && (
             <RenameButton label={`Name ${line.npcName}`} onClick={() => onRename(line, "npc")} />
           )}
           <span className="text-muted-foreground block truncate text-xs">
             {line.npcType} {line.npcId} <WowheadLink href={wowheadEntityUrl(line.npcType, line.npcId)} />
+            {showNpcPage && (
+              <>
+                {" "}
+                <a
+                  href={localeHref(lang, npcPageHref(line.npcId))}
+                  onClick={(event) => event.stopPropagation()}
+                  title="Open this NPC on the NPCs page"
+                  className="hover:text-foreground underline underline-offset-2"
+                >
+                  npc
+                </a>
+              </>
+            )}
+            {onAddSpeaker && (
+              <SpeakerAction label={`Add another NPC who says ${line.npcName}'s line`} onClick={() => onAddSpeaker(line)}>
+                <UserPlusIcon className="size-3" />
+              </SpeakerAction>
+            )}
+            {onReplaceSpeaker && (
+              <SpeakerAction
+                label={`Put another NPC in ${line.npcName}'s place on this line`}
+                onClick={() => onReplaceSpeaker(line)}
+              >
+                <RepeatIcon className="size-3" />
+              </SpeakerAction>
+            )}
+            {onRemoveSpeaker && !line.soleSpeaker && (
+              <SpeakerAction label={`Take ${line.npcName} off this line`} onClick={() => onRemoveSpeaker(line)}>
+                <XIcon className="size-3" />
+              </SpeakerAction>
+            )}
           </span>
+          {line.added && (
+            <span className="text-muted-foreground block text-xs" title="Added by hand, not from the game data">
+              added
+            </span>
+          )}
         </td>
       )}
 
-      {spanned && showQuest && (
+      {spanned && (
         <td rowSpan={groupSpan} className="px-2 py-2">
-          {line.questId === null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
+          {line.questId !== null ? (
             <>
-              <button
+              <FilterLink
+                href={questHref(line)}
+                onApply={() => onNarrowToQuest(line)}
                 className="hover:text-foreground block max-w-full truncate text-left underline-offset-2 hover:underline"
                 title={`Show only quest ${line.questId}`}
-                onClick={() => onNarrowToQuest(line)}
               >
                 <Untranslated missing={line.missing?.questTitle}>
                   {line.questTitle ?? `quest ${line.questId}`}
                 </Untranslated>
-              </button>
+              </FilterLink>
               {onRename && (
                 <RenameButton
                   label={`Name quest ${line.questId}`}
@@ -293,39 +357,38 @@ export default function LineRow({
                 {line.questId} <WowheadLink href={wowheadQuestUrl(line.questId)} />
               </span>
             </>
-          )}
-        </td>
-      )}
-
-      {spanned && showBroadcast && (
-        <td rowSpan={groupSpan} className="px-2 py-2 text-xs tabular-nums">
-          {line.broadcast?.length ? (
-            line.broadcast.map(({ id, matchedBy }) => (
-              <span
-                key={id}
-                className={"block " + (matchedBy === "text" ? "text-muted-foreground" : "")}
-                title={
-                  matchedBy === "text"
-                    ? "Matched by English text: one of the ids that read this way"
-                    : "The world database names this id for an NPC saying this text"
-                }
-              >
-                {id}
-              </span>
-            ))
           ) : (
-            <span className="text-muted-foreground">—</span>
+            // Gossip, which has no quest: the BroadcastText ids it speaks stand in its place.
+            <div className="text-xs tabular-nums">
+              {line.broadcast?.length ? (
+                line.broadcast.map(({ id, matchedBy }) => (
+                  <span
+                    key={id}
+                    className={"block " + (matchedBy === "text" ? "text-muted-foreground" : "")}
+                    title={
+                      matchedBy === "text"
+                        ? "Matched by English text: one of the ids that read this way"
+                        : "The world database names this id for an NPC saying this text"
+                    }
+                  >
+                    {id}
+                  </span>
+                ))
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+              {line.moment?.map((sibling) => (
+                <a
+                  key={sibling}
+                  href={localeHref(lang, `/quests?line=${encodeURIComponent(sibling)}`)}
+                  className="text-muted-foreground block truncate underline-offset-2 hover:underline"
+                  title={`Same moment: ${sibling}, the same id in the same voice, kept as a line of its own`}
+                >
+                  same moment
+                </a>
+              ))}
+            </div>
           )}
-          {line.moment?.map((sibling) => (
-            <a
-              key={sibling}
-              href={localeHref(lang, `/gossip?line=${encodeURIComponent(sibling)}`)}
-              className="text-muted-foreground block truncate underline-offset-2 hover:underline"
-              title={`Same moment: ${sibling}, the same id in the same voice, kept as a line of its own`}
-            >
-              same moment
-            </a>
-          ))}
         </td>
       )}
 
@@ -391,7 +454,7 @@ export default function LineRow({
                 // link would land on a queue that never shows the row it points at.
                 href={localeHref(
                   lang,
-                  `/contributions/${line.source === "gossip" ? "gossip" : "quests"}?status=accepted#contribution-${line.contributionId}`,
+                  `/contributions/quests?status=accepted#contribution-${line.contributionId}`,
                 )}
                 onClick={(event) => event.stopPropagation()}
                 title="Accepted from a player's contribution"
@@ -460,9 +523,7 @@ export default function LineRow({
         ) : stale ? (
           // Stale before the take number: "the audio is old" is the more actionable of the
           // two things this cell could say, and a rewrite is why somebody is here.
-          <span className="text-amber-300" title="Made from text that has since changed">
-            audio outdated
-          </span>
+          <OutdatedNote />
         ) : (
           // Which take is live, and the way to any other. The label IS the control, so the
           // history is no longer hidden behind a second icon.
@@ -494,7 +555,7 @@ export default function LineRow({
           source="quests"
           file={line.audioPath}
           recording={line.recording ?? null}
-          onChanged={onRecordingChanged}
+          onChanged={() => onRecordingChanged(line)}
         />
       )}
 

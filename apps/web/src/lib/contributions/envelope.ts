@@ -115,6 +115,21 @@ export function parseEnvelope(raw: string): Result {
   return { ok: true, value: { source, fields, text } };
 }
 
+/**
+ * The envelope written back out, as Contribute.lua's Envelope writes it: for an envelope the
+ * site kept only parsed, as a report keeps its context, and now stores as a contribution's raw.
+ * Parsing what this writes gives the same envelope back.
+ */
+export function formatEnvelope(envelope: Envelope): string {
+  const out = [`!SPOKEN1 ${envelope.source}`];
+  for (const [key, value] of Object.entries(envelope.fields)) out.push(`${key}=${value}`);
+  if (envelope.text) {
+    out.push("text<<", ...envelope.text.split("\n").map((line) => (/^\\*>>$/.test(line) ? `\\${line}` : line)), ">>");
+  }
+  const body = out.join("\n") + "\n";
+  return `${body}sum=${checksum(body)}\n`;
+}
+
 export type DecodeError = "malformed" | "corrupt" | "unsupported";
 type DecodeResult = { ok: true; text: string } | { ok: false; error: DecodeError };
 
@@ -134,6 +149,17 @@ type DecodeResult = { ok: true; text: string } | { ok: false; error: DecodeError
  * Async because DecompressionStream is a stream API with no synchronous form; every caller
  * already awaits the fetch this replaces, so that costs nothing a paste didn't already have.
  */
+/**
+ * The payload of a #e1= fragment, taken out of the address bar as it is read so the game text
+ * does not linger in history or get shared onward. Null when the address carries none.
+ */
+export function takeFragment(): string | null {
+  const hash = window.location.hash;
+  if (!hash.startsWith("#e1=")) return null;
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  return hash.slice("#e1=".length);
+}
+
 export async function decodeFragment(fragment: string): Promise<DecodeResult> {
   // Older Safari (pre-16.4) has no DecompressionStream at all. Reported plainly rather than
   // thrown -- ContributeForm's job is to say so and point at the paste box, not to crash on

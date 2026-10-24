@@ -270,7 +270,7 @@ end
 function Transcript:Sync()
     if self.held then return end
     -- The line playing, or the sample a window previews.
-    local current = PlayerFrame and PlayerFrame:Current() or SoundQueue:GetCurrentSound()
+    local current = PlayerFrame and PlayerFrame:Head() or SoundQueue:GetCurrentSound()
     -- A window turning to it by fading out first: these words stay until it has.
     if HeldFor(self, current) then
         self.held, self.heldStart = true, { clip = current, at = GetTime() }
@@ -309,21 +309,17 @@ end
 
 function Transcript:Reflow()
     if not self.measure or not self.labels then return end
-
-    -- 3.3.5a: The frame may not have its layout dimensions yet.
-    -- Don't wrap text against a zero-width frame.
+    -- WotLK 3.3.5a: Wait until the frame has a usable width.
     if not self.frame or self.frame:GetWidth() <= 1 then
         self.needsReflow = true
         return
     end
 
     self.needsReflow = false
-
     local button = self.expand:IsShown() and BUTTON_SIZE + GAP or 0
     local available = math.max(1, self.frame:GetWidth() - button)
     local paragraphs = self.style and self.style.paragraphs
-    local width = math.max(1, available - 50) -- Extra safety margin for WotLK 3.3.5a font rendering.
-
+    local width = math.max(1, available - 50) -- WotLK font measurement safety margin.
     self.lines, self.segments = {}, {}
     local line, lineText
     local function NewLine()
@@ -353,15 +349,10 @@ function Transcript:Reflow()
             segment.index = #self.segments
             line[#line + 1] = segment
             lineText = lineText .. prefix .. text
-            if self:TextWidth(lineText) > width then
-                print("OVERFLOW:", self:TextWidth(lineText), "LIMIT:", width, "TEXT:", lineText)
-            end
         end
     end
-    -- WotLK 3.3.5a: The client automatically truncates FontStrings
-    -- constrained to the exact caption width, adding unwanted "...".
-    -- Our Reflow() logic already splits text into correctly sized lines,
-    -- so give the labels extra rendering room.
+    -- WotLK: Avoid automatic FontString truncation.
+    -- Our Reflow() function already wraps the text into lines.
     for _, label in ipairs(self.labels) do
         label:SetWidth(math.max(600, available))
     end
@@ -369,7 +360,6 @@ function Transcript:Reflow()
     self.top = Clamp(self.top or self.topTarget, 1, self:MaxTop())
     self.renderedKey, self.placedKey = nil, nil
     self:Render()
-
 end
 
 function Transcript:PageCount()
@@ -414,20 +404,6 @@ function Transcript:CanGlide()
     return self.frame ~= nil and self.frame.SetClipsChildren ~= nil
 end
 
---- The first visible line, fractional mid-glide, and the highest it can be. For a player
---- that draws its own scrollbar beside the captions.
-function Transcript:GetScroll()
-    return self.top or 1, self:MaxTop()
-end
-
---- Show the captions from `line` on, holding there as a wheel scroll does.
-function Transcript:ScrollTo(line)
-    self.manualScroll = true
-    self.topTarget = self:Snap(line)
-    self.top = self.topTarget
-    self:Update()
-end
-
 function Transcript:ActiveSegment(progress)
     if not progress or not self.segments or #self.segments == 0 then return nil end
     local target = progress * self.totalWeight
@@ -445,7 +421,6 @@ function Transcript:Render()
     local progress = self:GetProgress()
     local segment = self:ActiveSegment(progress)
     local n, mode = LineCount(), Mode()
-
     local following = mode ~= "off" and not self.manualScroll
     if following then self.topTarget = segment and self:TargetFor(segment.line) or 1 end
     self.topTarget = self:Snap(self.topTarget or 1)
@@ -584,7 +559,7 @@ end
 -- the caption text and its reading position.
 function Transcript:HeightForClip(clip)
     -- Subtitles stand apart from the player, which then keeps its compact height.
-    if not Config().Enabled or Addon:DisplayStyle() == "subtitle" or not clip or self:TextFor(clip) == "" then return 0 end
+    if not Addon:ShowsNarrator(clip) or Addon:DisplayStyle() == "subtitle" or not clip or self:TextFor(clip) == "" then return 0 end
     return LineCount() * ((Config().FontSize or 16) + GAP)
 end
 
@@ -622,6 +597,7 @@ function Transcript:Dock(parent, anchor, point, x, y, width, height)
     else
         self.frame:Hide()
     end
+
     if changed or self.needsReflow then
         self:Reflow()
     end
@@ -630,7 +606,7 @@ end
 function Transcript:Update()
     if not self.frame or self.held then return end
     self:Render()
-    if Config().Enabled and Addon:DisplayStyle() ~= "subtitle"
+    if Addon:ShowsNarrator(self.clip) and Addon:DisplayStyle() ~= "subtitle"
         and self.clip ~= nil and self.text ~= "" then
         self.frame:Show()
     else
@@ -732,7 +708,7 @@ end
 function Label(parent)
     local label = parent:CreateFontString(nil, "OVERLAY")
     label:SetFont(GameFontNormal:GetFont(), 16, "")
-    -- Legacy WotLK: explicitly disable automatic truncation if supported.
+    -- Disable automatic truncation where supported.
     if label.SetMaxLines then
         label:SetMaxLines(0)
     end
@@ -775,9 +751,7 @@ function Transcript:Initialize()
         GameTooltip:AddLine(L.TRANSCRIPT_HINT, 1, .82, 0, true)
         GameTooltip:Show()
     end)
-    local function HideTooltip()
-        if GameTooltip:GetOwner() == frame then GameTooltip_Hide() end
-    end
+    local function HideTooltip() Actions.HideTipFor(frame) end
     frame:SetScript("OnLeave", HideTooltip)
     frame:SetScript("OnHide", HideTooltip)
     self.expand = CreateFrame("Button", nil, frame)
@@ -793,9 +767,7 @@ function Transcript:Initialize()
         GameTooltip:SetText(Expanded() and L.TRANSCRIPT_COLLAPSE or L.TRANSCRIPT_EXPAND)
         GameTooltip:Show()
     end)
-    local function HideExpandTooltip()
-        if GameTooltip:GetOwner() == self.expand then GameTooltip_Hide() end
-    end
+    local function HideExpandTooltip() Actions.HideTipFor(self.expand) end
     self.expand:SetScript("OnLeave", HideExpandTooltip)
     self.expand:SetScript("OnHide", HideExpandTooltip)
     self.labels = {}

@@ -7,6 +7,7 @@ came from treating a pre-built pack as immutable input.
 
 Needs no database: the corpus carries every field the lookup tables key on.
 """
+import json
 import os
 import shutil
 
@@ -16,8 +17,10 @@ from tqdm import tqdm
 from tts_cli.ignores import ignored_files
 from tts_cli.length_table import write_sound_length_table_lua
 from tts_cli.naming import (FOLLOWUP, followup_stem_from_line_id, gossip_hash_from_line_id,
-                            moment_of, split_voice, subfolder_from_line_id, variant_file_name)
-from tts_cli.npc_sexes import GENDER_SEX
+                            moment_of, quest_moment_stem, quest_stem_from_line_id,
+                            several_wordings, split_voice, subfolder_from_line_id,
+                            variant_file_name)
+from tts_cli.npc_bodies import GENDER_SEX, body_name
 from tts_cli.store import SUBFOLDERS, audio_extension, stored_files
 from tts_cli.utils import (get_first_n_words, get_last_n_words,
                            replace_dollar_bs_with_space)
@@ -28,11 +31,16 @@ DEFAULT_ADDONS_DIR = ("/Applications/World of Warcraft/_classic_era_"
                       "/Interface/AddOns")
 GUARD = "if not VoiceOver or not VoiceOver.DataModules then return end"
 
-#: Group is what actually nests this under the player in the AddOns list - added in 11.1.0,
+#: Group is what actually nests this under Spoken in the AddOns list - added in 11.1.0,
 #: and its value is the main addon's *name*, so it is the folder name and not the title.
 #: X-Part-Of and X-Child-Of are custom X- fields the client does not read at all; they are
 #: kept because addon managers do, and because upstream shipped them. Three keys that look
 #: interchangeable, one of which does the work.
+
+#: The site's model-to-race map (apps/web/src/lib/npc/models.ts), shipped so the addon can name
+#: the body a creature is drawn as from its model file id.
+CHARACTER_MODELS = os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps", "web", "src",
+                                "lib", "npc", "character-models.json")
 
 #: How many leading and trailing words the addon fuzzy-matches quest text on. Must stay
 #: in step with DataModules:GetQuestID in AI_VoiceOver/DataModules.lua.
@@ -72,11 +80,11 @@ VoiceOver.DataModules:Register("{module}", {module})
 # only once no supported release still looks for it.
 #
 # The Interface line names every client the packs ship for - Era, Anniversary, Forever - as
-# the zones and books packs do, after 100000: the 1.12/2.4.3/3.3.5 clients read the first
+# the zones and books packs do, after 100007: the 1.12/2.4.3/3.3.5 clients read the first
 # number alone and refuse one below 20000. DataModules turns checkAddonVersion off around LoadAddOn, which
 # loads a pack a client calls out of date, but Forever build 70170 calls an Interface it does
 # not list incompatible instead, and nothing turns that off: the pack has to name the client.
-DEFAULT_TITLE = "Spoken Quests Audio"
+DEFAULT_TITLE = "Spoken Audio: Quests"
 
 #: The TOC key naming the language a pack was recorded in. Must match what the addon's
 #: DataModules.lua reads.
@@ -85,25 +93,35 @@ LANGUAGE_KEY = "X-SpokenQuests-Language"
 #: The artwork the client shows beside the addon's name in the AddOns list. Committed as a TGA
 #: rather than converted at build time, so building needs no ffmpeg; tools/make_icon.py is what
 #: made it, and its header explains the format.
-ICON_SOURCE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "assets", "icon", "spoken-quests.tga")
+ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "assets", "icon")
 ICON_NAME = "icon.tga"
 
-TOC_HEADER = """## Interface: 100000, 11509, 20506, 16001
+
+def icon_source(language: str = None) -> str:
+    """English's mark, or the language's: the same mark with its badge, so a language's packs
+    are told apart from English's in the AddOns list. A language without one is an error
+    rather than English's mark, which would ship a pack that looks like the wrong language."""
+    if not language or language == "enUS":
+        return os.path.join(ICON_DIR, "spoken-quests.tga")
+    path = os.path.join(ICON_DIR, f"spoken-quests-{language}.tga")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"no icon for {language}: {path} (make quests-icon)")
+    return path
+
+TOC_HEADER = """## Interface: 100007, 11509, 20506, 16001
 ## Title: {title}
-## Notes: Contains voiceovers for content released during the Vanilla era.|n|nIt's |cFF20FF20OK|r for this addon to appear |cFF808080"disabled"|r or |cFFFF2020"out of date"|r, it's compatible with any client and |cFFFFD200Spoken Quests|r will load it even if it's disabled or out of date.
+## Notes: Contains voiceovers for content released during the Vanilla era.|n|nIt's OK for this addon to appear "disabled" or "out of date", it's compatible with any client and Spoken Quests will load it even if it's disabled or out of date.
 ## Version: {version}
 ## IconTexture: Interface\\AddOns\\{module}\\{icon}
 ## LoadOnDemand: 1
-## Group: SpokenQuests
+## Group: Spoken
 ## X-Part-Of: Spoken
-## X-Child-Of: SpokenQuests
+## X-Child-Of: Spoken_Quests
 ## X-SpokenQuests-DataModule-Version: 1
 ## X-SpokenQuests-DataModule-Priority: 100
-## X-SpokenQuests-DataModule-Maps: 0, 1, 30, 33, 43, 47, 48, 70, 90, 109, 129, 189, 209, 229, 230, 289, 309, 329, 349, 369, 389, 429, 469, 509, 531, 533
 ## X-VoiceOver-DataModule-Version: 1
 ## X-VoiceOver-DataModule-Priority: 100
-## X-VoiceOver-DataModule-Maps: 0, 1, 30, 33, 43, 47, 48, 70, 90, 109, 129, 189, 209, 229, 230, 289, 309, 329, 349, 369, 389, 429, 469, 509, 531, 533
 
 Module.lua
 """
@@ -152,6 +170,11 @@ def prune_quest_id_table(quest_id_table: dict) -> dict:
     return pruned
 
 
+def body_by_model() -> dict:
+    with open(CHARACTER_MODELS, encoding="utf-8") as f:
+        return {int(file_id): body_name(row["race"], row["gender"]) for file_id, row in json.load(f).items()}
+
+
 def build_tables(corpus: dict, ignored=()) -> dict:
     """Every lookup table, as {output filename: (lua table name, data)}.
 
@@ -169,18 +192,27 @@ def build_tables(corpus: dict, ignored=()) -> dict:
     # own (tts_cli/voice_files.py): keyed by the moment's file and the giver, since the addon
     # names a quest's file from its id and event and knows who is giving it.
     quest_files = {"creature": {}, "gameobject": {}}
-    # A split NPC's file per sex, keyed by the line's own stem: the addon finds the line as
-    # before, then asks the sex.
+    # A quest moment the game shows in several wordings: each wording's text and its file, by
+    # the moment's stem. The addon matches the text on screen against it as it does gossip.
+    wordings = {}
+    # A split NPC's file per body, keyed by the line's own stem: the addon finds the line as
+    # before, then asks the body. Each sex keeps a file too, its fallback body's
+    # (npc_bodies.sex_bodies), for addons that read only the sex.
+    gossip_by_body = {}
+    quest_files_by_body = {}
+    followup_by_body = {}
     gossip_by_sex = {}
     quest_files_by_sex = {}
     followup_by_sex = {}
-    # Which sex each other speaking creature is drawn as, so the addon can tell a man's voice
-    # given to a woman, and offer her line for contribution.
-    split = {(row["npcType"], row["npcId"]) for row in corpus.get("npcSexes", [])}
-    npc_sex = {npc["npcId"]: GENDER_SEX[npc["gender"]] for npc in corpus.get("npcs", [])
+    # The bodies each creature that greets is voiced as, so the addon can tell a body on screen
+    # its voice is not, and offer its line for contribution; and the sex of each unsplit one,
+    # which addons before the bodies read instead.
+    split = {(row["npcType"], row["npcId"]) for row in corpus.get("npcBodies", [])}
+    unsplit = {npc["npcId"]: npc for npc in corpus.get("npcs", [])
                if npc["npcType"] == "creature" and npc.get("gender") in GENDER_SEX
                and ("creature", npc["npcId"]) not in split}
     sex_of = {}
+    bodies_of = {}
 
     for line in corpus["lines"]:
         base_id, voice = split_voice(line["lineId"])
@@ -197,16 +229,19 @@ def build_tables(corpus: dict, ignored=()) -> dict:
         if line["source"] == FOLLOWUP:
             broadcast = int(line["lineId"].split(":")[1])
             stem = followup_stem_from_line_id(line["lineId"])
-            # A split NPC's follow-up is a file per sex. The chat event names the speaker, but
-            # its sex is readable only while the speaker is a unit the player has up, so the
-            # man's file stays the line's for when it is not.
-            if line.get("npcSex"):
+            # A split NPC's follow-up is a file per body. The chat event names the speaker, but
+            # its body is readable only while the speaker is a unit the player has up, so the
+            # man's fallback body's file stays the line's for when it is not.
+            if line.get("npcBody"):
+                followup_by_body.setdefault(line["npcId"], {}).setdefault(broadcast, {})[
+                    line["npcBody"]] = stem
+            if line.get("sexBody"):
                 followup_by_sex.setdefault(line["npcId"], {}).setdefault(broadcast, {})[
                     line["npcSex"]] = stem
             files = followup.setdefault(line["npcId"], {})
-            if line.get("npcSex") == 2:
+            if line.get("sexBody") and line["npcSex"] == 2:
                 files[broadcast] = stem
-            else:
+            elif not line.get("npcBody") or line.get("sexBody"):
                 files.setdefault(broadcast, stem)
             continue
 
@@ -217,11 +252,17 @@ def build_tables(corpus: dict, ignored=()) -> dict:
             # The bare hash: the addon adds the gender prefix when resolving.
             digest = gossip_hash_from_line_id(line["lineId"])
             own = gossip_hash_from_line_id(base_id)
-            if line.get("npcSex") and kind == "creature":
-                gossip_by_sex.setdefault(line["npcId"], {}).setdefault(line["npcSex"], {})[own] = digest
+            if line.get("npcBody") and kind == "creature":
+                gossip_by_body.setdefault(line["npcId"], {}).setdefault(line["npcBody"], {})[own] = digest
+                bodies_of.setdefault(line["npcId"], {})[line["npcBody"]] = True
+                if line.get("sexBody"):
+                    gossip_by_sex.setdefault(line["npcId"], {}).setdefault(line["npcSex"], {})[own] = digest
                 digest = own
-            elif kind == "creature" and line["npcId"] in npc_sex:
-                sex_of[line["npcId"]] = npc_sex[line["npcId"]]
+            elif kind == "creature" and line["npcId"] in unsplit:
+                npc = unsplit[line["npcId"]]
+                sex_of[line["npcId"]] = GENDER_SEX[npc["gender"]]
+                if npc.get("race"):
+                    bodies_of[line["npcId"]] = {body_name(npc["race"], npc["gender"]): True}
             gossip_by_id[kind].setdefault(line["npcId"], {})[text] = digest
             # Same-named NPCs of different voices share one entry here, so it names the line's
             # own file, never a voice's that only some of them speak.
@@ -233,21 +274,27 @@ def build_tables(corpus: dict, ignored=()) -> dict:
         if line["source"] == "progress":
             continue
 
+        stem = quest_stem_from_line_id(base_id)
+        wordings.setdefault(quest_moment_stem(base_id), {})[
+            escape_lua_string(line["originalText"])] = stem
+
         if line["source"] == "accept" and kind in questlog:
             questlog[kind][line["questId"]] = line["npcId"]
 
-        if line.get("npcSex") and kind == "creature":
-            stem = f'{line["questId"]}-{line["source"]}'
-            quest_files_by_sex.setdefault(stem, {}).setdefault(line["npcId"], {})[
-                line["npcSex"]] = variant_file_name(stem, voice) if voice else stem
+        if line.get("npcBody") and kind == "creature":
+            file_name = variant_file_name(stem, voice) if voice else stem
+            quest_files_by_body.setdefault(stem, {}).setdefault(line["npcId"], {})[line["npcBody"]] = file_name
+            if line.get("sexBody"):
+                quest_files_by_sex.setdefault(stem, {}).setdefault(line["npcId"], {})[line["npcSex"]] = file_name
         elif voice and kind in quest_files:
-            stem = f'{line["questId"]}-{line["source"]}'
             quest_files[kind].setdefault(stem, {})[line["npcId"]] = variant_file_name(stem, voice)
 
         quest_ids.setdefault(line["source"], {}) \
                  .setdefault(escape_lua_string(line["questTitle"]), {}) \
                  .setdefault(escape_lua_string(line["npcName"]), {}) \
                  .setdefault(quest_search_text(line["originalText"]), line["questId"])
+
+    wordings = several_wordings(wordings)
 
     return {
         "npc_gossip_file_lookups": ("GossipLookupByNPCID", gossip_by_id["creature"]),
@@ -264,11 +311,17 @@ def build_tables(corpus: dict, ignored=()) -> dict:
         "item_name_lookups": ("ItemNameLookupByItemID", names["item"]),
         "followup_lookups": ("FollowupLookup", followup),
         "npc_quest_file_lookups": ("QuestFileLookupByNPCID", quest_files["creature"]),
+        "quest_wording_lookups": ("QuestWordingLookup", wordings),
         "object_quest_file_lookups": ("QuestFileLookupByObjectID", quest_files["gameobject"]),
         "npc_sex_gossip_file_lookups": ("GossipFileLookupByNPCSex", gossip_by_sex),
         "npc_sex_quest_file_lookups": ("QuestFileLookupByNPCSex", quest_files_by_sex),
         "npc_sex_lookups": ("NPCSexByNPCID", sex_of),
         "npc_sex_followup_lookups": ("FollowupLookupByNPCSex", followup_by_sex),
+        "npc_body_gossip_file_lookups": ("GossipFileLookupByNPCBody", gossip_by_body),
+        "npc_body_quest_file_lookups": ("QuestFileLookupByNPCBody", quest_files_by_body),
+        "npc_body_followup_lookups": ("FollowupLookupByNPCBody", followup_by_body),
+        "npc_bodies_lookups": ("NPCBodiesByNPCID", bodies_of),
+        "body_model_lookups": ("BodyByModelFileID", body_by_model()),
     }
 
 
@@ -303,8 +356,8 @@ def locale_tables(corpus: dict, rows: list, ignored=()) -> dict:
         kind = line["npcType"]
         if kind not in tables:
             continue
-        # A split NPC's sexes find the line's own stem, and GossipFileLookupByNPCSex the rest.
-        stem = gossip_hash_from_line_id(base_id if line.get("npcSex") else line["lineId"])
+        # A split NPC's bodies find the line's own stem, and GossipFileLookupByNPCBody the rest.
+        stem = gossip_hash_from_line_id(base_id if line.get("npcBody") else line["lineId"])
         for text in texts.get((moment_of(base_id), line["originalText"]), ()):
             tables[kind].setdefault(line["npcId"], {})[escape_lua_string(text)] = stem
     return {filename: (table_name, tables[kind])
@@ -424,7 +477,7 @@ def build_module(corpus: dict, store_dir: str, dist_dir: str = DEFAULT_DIST_DIR,
     write_sound_length_table_lua(module_name, sounds_dir, generated_dir)
     written.append("sound_length_table.lua")
 
-    shutil.copy2(ICON_SOURCE, os.path.join(module_dir, ICON_NAME))
+    shutil.copy2(icon_source(language), os.path.join(module_dir, ICON_NAME))
 
     with open(os.path.join(module_dir, "Module.lua"), "w", encoding="utf-8") as f:
         f.write(MODULE_LUA.format(module=module_name, extension=extension))

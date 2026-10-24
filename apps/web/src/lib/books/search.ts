@@ -20,12 +20,13 @@ import { PAGE_SIZE, type Field, type PageFilters, type OwnerKind, type State } f
 export type ResultLine = {
   /** 'b:1381'. Unique by construction: one page is one line. */
   id: string;
-  pageId: number;
-  bookId: number;
+  pageId: number | null;
+  key: string;
+  bookId: string;
   pageNumber: number;
   pageCount: number;
   title: string;
-  ownerKind: OwnerKind;
+  ownerKind: OwnerKind | null;
   ownerIds: number[];
   material: number;
   text: string;
@@ -87,6 +88,7 @@ export function decorate(page: BookPage, context: SearchContext): ResultLine {
   return {
     id: page.id,
     pageId: page.pageId,
+    key: page.key,
     bookId: page.bookId,
     pageNumber: page.pageNumber,
     pageCount: page.pageCount,
@@ -143,7 +145,7 @@ export function matching(lines: ResultLine[], filters: PageFilters = {}): Result
   if (filters.state) out = out.filter((l) => l.state === filters.state);
   // Its own filter rather than a fourth state, because a current take can be dirty.
   if (filters.dirty) out = out.filter((l) => l.dirty);
-  if (filters.voiceable) out = out.filter((l) => l.generatable);
+  if (filters.voiceable !== undefined) out = out.filter((l) => l.generatable === filters.voiceable);
   if (filters.reports === "open") out = out.filter((l) => l.reportsOpen > 0);
   // An id the corpus no longer carries matches nothing rather than everything: a report
   // about a page that has since been dropped must not read as "here it is".
@@ -161,7 +163,7 @@ function order(lines: ResultLine[]): ResultLine[] {
   return [...lines].sort(
     (a, b) =>
       a.title.localeCompare(b.title) ||
-      a.bookId - b.bookId ||
+      a.bookId.localeCompare(b.bookId, undefined, { numeric: true }) ||
       a.pageNumber - b.pageNumber ||
       a.id.localeCompare(b.id),
   );

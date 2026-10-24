@@ -20,7 +20,7 @@ local LANG = "X-SpokenQuests-Language"
 --- Install the given packs and load the addon. Each entry is
 --- { folder, language (nil = declares none), priority, lines = { [fileName] = length } }.
 local function Install(packs, locale)
-    stub.SetClient("11509"); stub.ResetSound(); stub.ResetTimers()
+    stub.SetClient("16001"); stub.ResetSound(); stub.ResetTimers()
     stub.SetLocale(locale or "enUS")
     local addons = {}
     for _, pack in ipairs(packs) do
@@ -245,29 +245,37 @@ Expect("H. with no pack at all, the chosen language", VO.DataModules:GetPackLang
 
 ---------------------------------------------------------------- J. a report is filed in the clip's language
 VO = Install({ { folder = "EnglishPack", lines = EN_LINES } })
-Expect("J. an English report keeps the address it always had",
-    VO.ReportButton:Link("quest/1/accept", "enUS"), "https://voiceover.rusty.one/r/quest/1/accept")
+Expect("J. an English report goes to the unprefixed page",
+    VO.ReportButton:Link("quest/1/accept", "enUS"), "https://spoken.rusty.one/quests/r/quest/1/accept")
 Expect("J. ...and so does one with no language",
-    VO.ReportButton:Link("quest/1/accept"), "https://voiceover.rusty.one/r/quest/1/accept")
+    VO.ReportButton:Link("quest/1/accept"), "https://spoken.rusty.one/quests/r/quest/1/accept")
+Expect("J. a creature is reported by its npc address",
+    VO.ReportButton:TargetForGUID("Creature-0-1-2-3-68-0000000001"), "npc/68")
+Expect("J. ...and an object of the same id by its object address",
+    VO.ReportButton:TargetForGUID("GameObject-0-1-2-3-68-0000000001"), "object/68")
 Expect("J. another language's report goes to that language's page",
     VO.ReportButton:Link("quest/1/accept", "deDE"), "https://spoken.rusty.one/deDE/quests/r/quest/1/accept")
 
--- The Report action hands over the language the clip was answered in: line 2 is English
--- fallback under a Portuguese selection, and its report is about the English take.
+-- The Report action files under the voice language, whatever the clip was answered in: line 2
+-- is English fallback under a Portuguese selection, and its report is that Portuguese is missing.
 local function ReportFor(VO, questID)
     local _, clip = Resolve(VO, questID)
     VO.Player:Prepare(clip)
-    local target, language
+    local url
     VO.ReportButton.CurrentTarget = function() return "quest/" .. questID .. "/accept" end
-    VO.ReportButton.ShowLink = function(_, t, l) target, language = t, l end
+    local link = VO.ReportButton.Link
+    VO.ReportButton.Link = function(self, t, l) url = link(self, t, l); return url end
     for _, action in ipairs(clip.present.actions) do
         if action.id == "report" then action.onClick(clip) end
     end
-    return language
+    VO.ReportButton.Link = link
+    return url
 end
 VO = Install(PACKS, "ptBR")
-Expect("J. reporting a Portuguese clip files it in Portuguese", ReportFor(VO, 1), "ptBR")
-Expect("J. reporting a fallback clip files it in English", ReportFor(VO, 2), "enUS")
+Expect("J. reporting a Portuguese clip files it in Portuguese", ReportFor(VO, 1),
+    "https://spoken.rusty.one/ptBR/quests/r/quest/1/accept")
+Expect("J. reporting a fallback clip files it in Portuguese too", ReportFor(VO, 2),
+    "https://spoken.rusty.one/ptBR/quests/r/quest/2/accept")
 do
     -- With the quest window already shut, as it is by the time a subtitle's Report is clicked:
     -- the clip says which line it was.
@@ -300,6 +308,7 @@ Expect("K. a client claiming Italian is not taken at its word", VO.Language:GetC
 Expect("K. ...so Auto stays English", Resolve(VO, 1), "EnglishPack")
 Expect("K. Italian is not a client language", VO.Language:IsClientLanguage("itIT"), false)
 Expect("K. Portuguese is", VO.Language:IsClientLanguage("ptBR"), true)
+Expect("K. nor is Vietnamese", VO.Language:IsClientLanguage("viVN"), false)
 
 ---------------------------------------------------------------- L. the addon's own gossip text, and aliases
 -- Gossip/<locale>.lua gives every line's text in the client's locale, whatever the packs
@@ -316,6 +325,12 @@ Expect("L. a German client matches on the addon's German text", own.fileName, SE
 Expect("L. ...and hears the English pack", own.module.METADATA.AddonName, "EnglishPack")
 Expect("L. ...and the NPC counts as having gossip", VO.DataModules:HasGossipFor(
     { unitGUID = "Creature-0-0-0-0-6929-0" }), true)
+
+-- The text names every NPC's lines whether or not a pack voices them, so it alone says nothing.
+VO = Install({ { folder = "EnglishPack", lines = {} } }, "deDE")
+VO.GossipText = DE_OWN
+Expect("L. ...but not where no pack holds its audio", VO.DataModules:HasGossipFor(
+    { unitGUID = "Creature-0-0-0-0-6929-0" }), false)
 
 -- The same German client choosing Portuguese.
 VO = Install({

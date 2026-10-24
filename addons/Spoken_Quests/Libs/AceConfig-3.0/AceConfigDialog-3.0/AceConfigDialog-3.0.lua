@@ -570,16 +570,10 @@ do
 			end
 		end)
 
-		local border = CreateFrame("Frame", nil, frame)
+		local border = CreateFrame("Frame", nil, frame, "DialogBorderOpaqueTemplate")
 		border:SetAllPoints(frame)
-		border:SetBackdrop({
-		    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		    tile = true,
-		    tileSize = 32,
-		    edgeSize = 32,
-		    insets = { left = 11, right = 12, top = 12, bottom = 11 }
-		})
+		frame:SetFixedFrameStrata(true)
+		frame:SetFixedFrameLevel(true)
 
 		local text = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 		text:SetSize(290, 0)
@@ -591,11 +585,11 @@ do
 			button:SetSize(128, 21)
 			button:SetNormalFontObject(GameFontNormal)
 			button:SetHighlightFontObject(GameFontHighlight)
-			button:SetNormalTexture("Interface\\Buttons\\UI-DialogBox-Button-Up") -- "Interface\\Buttons\\UI-DialogBox-Button-Up"
+			button:SetNormalTexture(130763) -- "Interface\\Buttons\\UI-DialogBox-Button-Up"
 			button:GetNormalTexture():SetTexCoord(0.0, 1.0, 0.0, 0.71875)
-			button:SetPushedTexture("Interface\\Buttons\\UI-DialogBox-Button-Down") -- "Interface\\Buttons\\UI-DialogBox-Button-Down"
+			button:SetPushedTexture(130761) -- "Interface\\Buttons\\UI-DialogBox-Button-Down"
 			button:GetPushedTexture():SetTexCoord(0.0, 1.0, 0.0, 0.71875)
-			button:SetHighlightTexture("Interface\\Buttons\\UI-DialogBox-Button-Highlight") -- "Interface\\Buttons\\UI-DialogBox-Button-Highlight"
+			button:SetHighlightTexture(130762) -- "Interface\\Buttons\\UI-DialogBox-Button-Highlight"
 			button:GetHighlightTexture():SetTexCoord(0.0, 1.0, 0.0, 0.71875)
 			button:SetText(newText)
 			return button

@@ -37,6 +37,11 @@ const KIND_OPTIONS: ChipOption[] = OWNER_KINDS.map((kind) => ({
   label: kind === "object" ? "in the world" : "carried items",
 }));
 
+// "no" is how the pages nothing can voice are found, with the reason on each row.
+const VOICEABLE_OPTIONS: ChipOption[] = [
+  { value: "yes", label: "yes" },
+  { value: "no", label: "no" },
+];
 
 type Props = {
   books: BookFacet[];
@@ -72,7 +77,7 @@ export function SearchBar({
   const active = activeFilterCount(filters);
 
   const bookOptions: ChipOption[] = books.map((book) => ({
-    value: String(book.bookId),
+    value: book.bookId,
     label: book.pages > 1 ? `${book.title} (${book.pages} pages)` : book.title,
   }));
 
@@ -98,9 +103,9 @@ export function SearchBar({
 
       <FilterChip
         label="book"
-        value={filters.bookId === undefined ? undefined : String(filters.bookId)}
+        value={filters.bookId}
         options={bookOptions}
-        onChange={(value) => onChange({ bookId: value ? Number(value) : undefined })}
+        onChange={(value) => onChange({ bookId: value || undefined })}
       />
 
       <FilterChip
@@ -126,15 +131,12 @@ export function SearchBar({
       )}
       {recordable && <RecordedChip value={filters.recorded} onChange={(recorded) => onChange({ recorded })} />}
 
-      {/* A checkbox rather than a chip: it is the one filter people leave on, and 88 of the
-          1191 pages are the ones it hides. */}
-      <Label className="flex items-center gap-1.5 text-xs">
-        <Checkbox
-          checked={filters.voiceable ?? false}
-          onCheckedChange={(checked) => onChange({ voiceable: checked === true ? true : undefined })}
-        />
-        voiceable only
-      </Label>
+      <FilterChip
+        label="voiceable"
+        value={filters.voiceable === undefined ? undefined : filters.voiceable ? "yes" : "no"}
+        options={VOICEABLE_OPTIONS}
+        onChange={(value) => onChange({ voiceable: value ? value === "yes" : undefined })}
+      />
 
       {/* A checkbox rather than a value of `state`, because a page can be current and carry
           this at once: as a state it would hide whichever answer came second. */}

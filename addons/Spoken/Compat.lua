@@ -2,19 +2,17 @@ setfenv(1, SpokenEnv)
 
 --------------------------------------------------------------------------- polyfills
 --
--- What the legacy clients lack of the Lua the rest of this addon is written in.
--- Lifted from the quests addon. Written into the environment, never into _G, so other
--- addons on those clients see their own Lua and not ours.
+-- What the legacy clients lack of the Lua the rest of this addon is written in. Written into
+-- the environment, never into _G, so other addons on those clients see their own Lua and not
+-- ours.
 --
--- Load order note: this file loads last, and that is fine -- nothing above calls
--- `select`, `hooksecurefunc` or the rest at load time, only from functions that run
--- after login.
+-- This file loads last, which is fine: nothing above calls `select`, `hooksecurefunc` or the
+-- rest at load time, only from functions that run after login.
 
 -- Patch 11.0.2 removed the legacy global AddOn-management API. Current
 -- Classic clients expose the same operations through C_AddOns, with the
 -- character/addon argument order reversed for GetAddOnEnableState.
--- Keep these shims private to VoiceOver's environment so other addons are
--- not affected.
+-- Kept private to Spoken's environment so other addons are not affected.
 if C_AddOns then
     GetNumAddOns = GetNumAddOns or C_AddOns.GetNumAddOns
     GetAddOnInfo = GetAddOnInfo or C_AddOns.GetAddOnInfo
@@ -177,11 +175,6 @@ end
 
 -- Per-client overrides. Loaded last, so everything it replaces already exists. Each block
 -- writes into the environment, never into _G, which is the whole point of the environment.
---
--- Only the playback half of VoiceOverRedux's Compatibility.lua lives here so far: what the
--- frame and model overrides need arrives with the player's UI. The quest-side policy that
--- used to sit inside these functions -- toggling the NPC's own greeting off on 1.12 when
--- AutoToggleDialog is set -- does not: that is the quests addon's, and it hooks the queue.
 
 --------------------------------------------------------------------------------- 1.12
 if Version.IsLegacyVanilla then
@@ -393,7 +386,7 @@ if Version.IsLegacyBurningCrusade or Version.IsLegacyWrath then
 
         Addon:CancelTimer(soundData.stopSoundTimer, true)
         soundData.stopSoundTimer = nil
-        -- Upstream left the handle set here, so a stopped clip still looked stoppable.
+        -- Cleared, or a stopped clip would still look stoppable.
         soundData.handle = nil
 
         PlaySilence() -- Instantly interrupt the VO sound
@@ -415,7 +408,7 @@ end
 --
 -- Everything the UI builds goes through this file's CreateFrame, which applies what an
 -- old client lacks (SetShown, SetSize, SetResizeBounds, Get*Texture, HookScript...) as
--- mixins and overrides on the frame it returns. Lifted from the quests addon.
+-- mixins and overrides on the frame it returns.
 
 local RegionMixins = {}
 local RegionOverrides = {}
@@ -759,47 +752,53 @@ if Version.IsLegacyVanilla or Version.IsLegacyBurningCrusade then
 
 end
 
-if false and (Version.IsLegacyBurningCrusade or Version.IsLegacyWrath) then
+if Version.IsLegacyBurningCrusade or Version.IsLegacyWrath then
     function Portrait:GetCurrentModelSet()
         return Addon.db.profile.Audio.LegacyHDModels and "HD" or "Original"
     end
 
     -- Frame fade-in to soften the delay the music-channel path adds before a clip.
-    hooksecurefunc(PlayerFrame, "InitDisplay", function(self)
-        local fadeIn, animation
-        if self.frame.CreateAnimationGroup then
-            fadeIn = self.frame:CreateAnimationGroup()
-            animation = fadeIn:CreateAnimation("Alpha")
-            animation:SetOrder(1)
-            animation:SetDuration(0)
-            animation:SetChange(-1)
-            animation = fadeIn:CreateAnimation("Alpha")
-            animation:SetOrder(2)
-            animation:SetDuration(1)
-            animation:SetChange(1)
-            animation:SetSmoothing("OUT")
-        else
-            fadeIn, animation = { frame = self.frame }, {}
-            function fadeIn:Stop() self.frame:SetAlpha(1); self.enabled = nil end
-            function fadeIn:Play() self.frame:SetAlpha(0); self.enabled = true end
-            function animation:SetDuration(duration) self.duration = duration end
-            self.frame:HookScript("OnUpdate", function(frame, elapsed)
-                if fadeIn.enabled then
-                    local alpha = math.min(1, frame:GetAlpha() + elapsed / animation.duration)
-                    if alpha >= 1 then fadeIn:Stop() else frame:SetAlpha(alpha) end
+    local enableLegacyPlayerFade = false
+
+    -- Disabled for original WotLK 3.3.5a compatibility.
+    -- The fade hook can interfere with portrait/frame visibility.
+    if enableLegacyPlayerFade then
+        hooksecurefunc(PlayerFrame, "InitDisplay", function(self)
+            local fadeIn, animation
+            if self.frame.CreateAnimationGroup then
+                fadeIn = self.frame:CreateAnimationGroup()
+                animation = fadeIn:CreateAnimation("Alpha")
+                animation:SetOrder(1)
+                animation:SetDuration(0)
+                animation:SetChange(-1)
+                animation = fadeIn:CreateAnimation("Alpha")
+                animation:SetOrder(2)
+                animation:SetDuration(1)
+                animation:SetChange(1)
+                animation:SetSmoothing("OUT")
+            else
+                fadeIn, animation = { frame = self.frame }, {}
+                function fadeIn:Stop() self.frame:SetAlpha(1); self.enabled = nil end
+                function fadeIn:Play() self.frame:SetAlpha(0); self.enabled = true end
+                function animation:SetDuration(duration) self.duration = duration end
+                self.frame:HookScript("OnUpdate", function(frame, elapsed)
+                    if fadeIn.enabled then
+                        local alpha = math.min(1, frame:GetAlpha() + elapsed / animation.duration)
+                        if alpha >= 1 then fadeIn:Stop() else frame:SetAlpha(alpha) end
+                    end
+                end)
+            end
+            self.frame:HookScript("OnShow", function()
+                fadeIn:Stop()
+                local head = SoundQueue:GetCurrentSound()
+                local duration = head and head.delay or 0
+                if duration > 0 then
+                    animation:SetDuration(duration)
+                    fadeIn:Play()
                 end
             end)
-        end
-        self.frame:HookScript("OnShow", function()
-            fadeIn:Stop()
-            local head = SoundQueue:GetCurrentSound()
-            local duration = head and head.delay or 0
-            if duration > 0 then
-                animation:SetDuration(duration)
-                fadeIn:Play()
-            end
         end)
-    end)
+    end -- Legacy player fade
 end
 
 if Version.IsLegacyWrath then

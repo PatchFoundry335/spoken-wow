@@ -2,12 +2,14 @@ import { pageLang } from "@/lib/lang-server";
 import { viewerOf } from "@/lib/grants/store";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import ContributionTable, { type ContributionRow } from "@/components/ContributionTable";
 import ContributionsTabs from "@/components/ContributionsTabs";
 import { auth } from "@/lib/auth";
-import { bookFacets, catalogue, pageById } from "@/lib/books/catalogue";
+import { bookFacets, catalogue } from "@/lib/books/catalogue";
+import { pageKeyOf } from "@/lib/books/tools";
+import { bulkAcceptable, loadBookCorpus, matchBook, type BookCorpusPage, type BookMatchResult } from "@/lib/contributions/book-match";
 import { clientFilterOf, clientOf, matchesClient } from "@/lib/contributions/client";
 import { corpusLookup } from "@/lib/contributions/existing";
 import { lineStates, tabOf } from "@/lib/contributions/known";
@@ -19,12 +21,11 @@ import {
   isBucket,
   isSection,
   namesSpeaker,
-  sectionOf,
-  sourceOfSection,
   matchesSearch,
-  isStageFilter,
   matchesStage,
   pageOf,
+  queryOf,
+  stagesOf,
   PAGE_SIZE,
   sortOf,
   type ClientFilter,
@@ -32,19 +33,20 @@ import {
   type Bucket,
   type StageFilter,
 } from "@/lib/contributions/query";
+import { pendingCounts } from "@/lib/contributions/pending";
 import { listContributions, observationMeta, type Contribution } from "@/lib/contributions/store";
 import {
   bookFor,
   npcSummaryFrom,
+  packHeard,
   questFor,
   resolveMissing,
   idOnlyResolution,
-  type BookMatch,
   type NpcSummary,
 } from "@/lib/contributions/triage";
 import { observedFrom, resolveNpc } from "@/lib/npc/resolve";
 import { getResolutions, getResolutionsById, resolutionKey, type NpcRowKind } from "@/lib/npc/store";
-import { BASE_LANG, isClientLang, isLang, langName, type Lang } from "@/lib/lang";
+import { BASE_LANG, isClientLang, isLang, langName, localeHref, type Lang } from "@/lib/lang";
 import { loadRoster } from "@/lib/voices/roster-store";
 import { can, isAdmin } from "@/lib/permissions";
 import { lineByPath } from "@/lib/zones/catalogue";
@@ -56,24 +58,31 @@ export const metadata: Metadata = { title: "Contributions · Spoken" };
 export const dynamic = "force-dynamic";
 
 /**
- * The corpus text a contribution's key already resolves to, or undefined where it does not.
+ * The corpus text a contribution already resolves to, or undefined where it does not.
  *
- * Only books and zones have a key corpusLookup can resolve (see existing.ts); a quests row is
- * left out of the map entirely rather than looked up and always missing, so the table can
- * tell "not checked" apart from "checked and the corpus has nothing".
+ * A zones row is looked up by its key; a books row by the page the matcher found, in the row's
+ * language only. A quests row is left out of the map entirely rather than looked up and always
+ * missing, so the table can tell "not checked" apart from "checked and the corpus has nothing".
  */
-async function existingTextFor(contributions: Contribution[]): Promise<Record<number, string>> {
+async function existingTextFor(
+  contributions: Contribution[],
+  bookMatches: Map<number, BookMatchResult>,
+): Promise<Record<number, string>> {
   const found: Record<number, string> = {};
 
   await Promise.all(
     contributions.map(async (row) => {
+      if (row.source === "books") {
+        const match = bookMatches.get(row.id);
+        const lineId = match && "lineId" in match ? match.lineId : null;
+        const page = lineId
+          ? (await catalogue(isLang(row.locale) ? row.locale : BASE_LANG)).find((p) => p.id === lineId)
+          : undefined;
+        if (page && !page.missing?.text && page.text) found[row.id] = page.text;
+        return;
+      }
       const lookup = corpusLookup(row.source, row.key);
-      if (!lookup) return;
-
-      if (lookup.source === "books") {
-        const page = await pageById(lookup.pageId);
-        if (page) found[row.id] = page.text;
-      } else {
+      if (lookup?.source === "zones") {
         const line = await lineByPath(lookup.mapID, lookup.slug);
         if (line) found[row.id] = line.full;
       }
@@ -83,17 +92,28 @@ async function existingTextFor(contributions: Contribution[]): Promise<Record<nu
   return found;
 }
 
-/** The English page each matched books row names, keyed on the page id. */
-async function bookMatchesFor(contributions: Contribution[]): Promise<Map<number, BookMatch>> {
-  const ids = new Set(contributions.flatMap((row) => (row.pageId === null ? [] : [row.pageId])));
-  if (ids.size === 0) return new Map();
-  const matches = new Map<number, BookMatch>();
-  for (const page of await catalogue(BASE_LANG)) {
-    if (!ids.has(page.pageId)) continue;
-    const { pageId, bookId, title, pageNumber, pageCount } = page;
-    matches.set(pageId, { pageId, bookId, title, pageNumber, pageCount });
+/** What each books row is by its words, owner or title, and a way to name a page or book in the row's language. */
+async function bookMatchesFor(contributions: Contribution[]) {
+  const books = contributions.filter((row) => row.source === "books");
+  if (books.length === 0) {
+    return { matches: new Map<number, BookMatchResult>(), describe: (_lang: string) => (id: string) => id };
   }
-  return matches;
+  const corpus = await loadBookCorpus();
+  const matches = new Map(books.map((row) => [row.id, matchBook(row, corpus)]));
+  const byLine = new Map(corpus.pages.map((p) => [p.lineId, p]));
+  const firstOf = new Map<string, BookCorpusPage>();
+  for (const p of corpus.pages) {
+    const first = firstOf.get(p.bookId);
+    if (!first || p.pageNumber < first.pageNumber) firstOf.set(p.bookId, p);
+  }
+  const titleIn = (p: BookCorpusPage | undefined, lang: string) =>
+    p?.titles.get(lang)?.[0] ?? p?.titles.get(BASE_LANG)?.[0] ?? [...(p?.titles.values() ?? [])][0]?.[0] ?? "untitled";
+  const describe = (lang: string) => (id: string) => {
+    if (id.startsWith("book:")) return titleIn(firstOf.get(id.slice(5)), lang);
+    const page = byLine.get(id);
+    return page ? `${titleIn(page, lang)} p.${page.pageNumber}` : id;
+  };
+  return { matches, describe };
 }
 
 /**
@@ -214,6 +234,12 @@ export default async function Page({
 }) {
   const lang = await pageLang(params);
   const { source } = await params;
+  // Gossip was a section of its own; an old link opens quests narrowed to it.
+  if (source === "gossip") {
+    const query = queryOf(await searchParams);
+    query.set("stage", "gossip");
+    redirect(localeHref(lang, `/contributions/quests?${query}`));
+  }
   if (!isSection(source)) notFound();
   const session = await auth.api.getSession({ headers: await headers() });
 
@@ -265,7 +291,7 @@ export default async function Page({
   const client: ClientFilter = clientFilterOf(rawClient);
 
   // Which quest panel the text was read off -- accept, progress or complete -- or gossip.
-  const stage: StageFilter = source === "quests" && isStageFilter(rawStage) ? rawStage : "all";
+  const stage: StageFilter = source === "quests" ? stagesOf(rawStage) : [];
 
   // Books and zones name no NPC or quest, so their search is always over the text.
   const q = typeof rawQ === "string" ? rawQ.trim() : "";
@@ -276,10 +302,10 @@ export default async function Page({
 
   // Lines the corpus already has are not this queue's: a different text is a correction, on
   // its own tab, and the same text is nothing to triage at all (known.ts's tabOf).
-  // Gossip is the quests rows tied to no quest, so the two sections read one source and split it.
-  const listed = (await listContributions(status, lang, sort, sourceOfSection(source))).filter(
-    (row) => sectionOf(row, questFor(row)) === source,
-  );
+  const [listed, pending] = await Promise.all([
+    listContributions(status, lang, sort, source),
+    pendingCounts(lang),
+  ]);
   const states = await lineStates(listed);
   const contributions = listed.filter((row, index) => tabOf(row.status, states[index]) === "contributions");
   // Every row's NPC, not just this page's: the buckets read it, and it is one query for the lot.
@@ -307,15 +333,12 @@ export default async function Page({
   const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
   const page = Math.min(pageOf(rawPage), pages);
   const shown = matching.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const [existing, linedIds, bookMatches] = await Promise.all([
-    existingTextFor(shown),
-    linesInExplorer(shown),
-    bookMatchesFor(shown),
-  ]);
-  // The English books, for matching a translated page to one -- only when this page shows a
-  // row that can be matched.
-  const books = shown.some((row) => bookFor(row, null))
-    ? (await bookFacets(BASE_LANG)).map(({ bookId, title, pages }) => ({ bookId, title, pages }))
+  // Every matching row's, not just this page's: "Accept all" leaves out the ones the matcher can't place.
+  const { matches: bookMatches, describe } = await bookMatchesFor(matching);
+  const [existing, linedIds] = await Promise.all([existingTextFor(shown, bookMatches), linesInExplorer(shown)]);
+  // Every language's books, for placing a row in one -- only when this page shows a books row.
+  const books = shown.some((row) => row.source === "books")
+    ? (await bookFacets(lang)).map(({ bookId, title, pages }) => ({ bookId, title, pages }))
     : [];
 
   // ContributionTable is a client component: whatever shape crosses in `initial` lands in the
@@ -328,6 +351,7 @@ export default async function Page({
     source: row.source,
     key: row.key,
     locale: row.locale,
+    pack: packHeard(row),
     client: clientOf(row.build),
     count: row.count,
     text: row.text,
@@ -336,7 +360,11 @@ export default async function Page({
     body: row.body,
     npc: npcs[row.id] ?? null,
     quest: questFor(row),
-    book: bookFor(row, row.pageId === null ? null : (bookMatches.get(row.pageId) ?? null)),
+    book:
+      row.source === "books"
+        ? bookFor(row, bookMatches.get(row.id)!, describe(row.locale), (lineId) =>
+            localeHref(lang, `/books/r/${pageKeyOf(lineId)}`))
+        : null,
     hasLine: linedIds.has(row.id),
     hasSpeaker: hasSpeaker.has(row.id),
     place: placeOf(row),
@@ -358,12 +386,16 @@ export default async function Page({
           lang={lang}
           section={source}
           view="contributions"
+          pending={pending}
         />
         <ContributionTable
           initial={rows}
-          // Every row the filters match, on any page, as just its id and status: what "Accept all"
-          // acts on.
-          matching={matching.map((row) => ({ id: row.id, status: row.status }))}
+          // Every row the filters match, on any page, as just its id, status and whether a bulk
+          // accept may take it: what "Accept all" acts on.
+          matching={matching.map((row) => {
+            const match = bookMatches.get(row.id);
+            return { id: row.id, status: row.status, bulk: !match || bulkAcceptable(match) };
+          })}
           page={page}
           pages={pages}
           status={status}

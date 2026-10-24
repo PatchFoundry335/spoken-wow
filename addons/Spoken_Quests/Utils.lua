@@ -28,6 +28,7 @@ end
 --- above reject, or a client before 2.3 where Compatibility.lua removes them. Guarded with
 --- pcall because those helpers assert, and the callers run on chat and playback events.
 function Utils:GetCreatureIDFromGUID(guid)
+    guid = NotSecret(guid)
     if type(guid) ~= "string" or guid == "" or not (self.GetGUIDType and self.GetIDFromGUID) then
         return nil
     end
@@ -57,7 +58,7 @@ end
 --- - Overridden in 1.12 to only return "npc" as "questnpc" unitID is unavailable in 1.12 and causes an error.
 ---@return string|nil name
 function Utils:GetNPCName()
-    return UnitName("questnpc") or UnitName("npc")
+    return NotSecret(UnitName("questnpc")) or NotSecret(UnitName("npc"))
 end
 
 --- Returns the GUID of the NPC that's being interacted with while a GossipFrame or QuestFrame is visible.
@@ -66,7 +67,7 @@ end
 --- - Returns nil in 1.12 due to the lack of `UnitGUID(unitID)` function.
 ---@return string|nil guid
 function Utils:GetNPCGUID()
-    return UnitGUID("questnpc") or UnitGUID("npc")
+    return NotSecret(UnitGUID("questnpc")) or NotSecret(UnitGUID("npc"))
 end
 
 local SEX_UNITS = { "questnpc", "npc", "target", "mouseover" }
@@ -80,8 +81,26 @@ function Utils:GetSexForGUID(unitGUID)
         return
     end
     for _, unit in ipairs(SEX_UNITS) do
-        if UnitGUID(unit) == unitGUID then
-            return UnitSex(unit)
+        if NotSecret(UnitGUID(unit)) == unitGUID then
+            return NotSecret(UnitSex(unit))
+        end
+    end
+end
+
+--- The body (race and sex) a GUID's creature is drawn as, read from its model: nil until the
+--- model has loaded (NPCModel), or where no installed pack names that model. NPCModel and
+--- DataModules load after this file, so both are reached at call time.
+---@param unitGUID string|nil
+---@return string|nil body
+function Utils:GetBodyForGUID(unitGUID)
+    local model = unitGUID and NPCModel and NPCModel:Get(unitGUID)
+    if not model or not DataModules then
+        return
+    end
+    for _, module in DataModules:GetModules() do
+        local body = module.BodyByModelFileID and module.BodyByModelFileID[model]
+        if body then
+            return body
         end
     end
 end
@@ -153,6 +172,27 @@ end
 ---@return string colorizedText
 function Utils:ColorizeText(text, color)
     return color .. text .. "|r"
+end
+
+--- A line's text with the server's tokens filled in for the local player: name, race, class,
+--- the $g branch for the player's sex, and $B as a line break.
+---@param text string
+---@return string
+function Utils:FillPlayerTokens(text)
+    local name = UnitName and UnitName("player") or ""
+    local class = UnitClass and UnitClass("player") or ""
+    local race = UnitRace and UnitRace("player") or ""
+    local female = UnitSex and UnitSex("player") == 3
+    -- $gmale:female; and $Gmale:female; - the export keeps Blizzard's spacing, "$GHe : She;".
+    text = string.gsub(text, "%$[gG]([^:;]*):([^;]*);", function(male, femaleForm)
+        return string.trim(female and femaleForm or male)
+    end)
+    -- Function replacements, so a % in a name is never read as a capture.
+    text = string.gsub(text, "%$[bB]", "\n")
+    text = string.gsub(text, "%$[nN]", function() return name end)
+    text = string.gsub(text, "%$[cC]", function() return class end)
+    text = string.gsub(text, "%$[rR]", function() return race end)
+    return text
 end
 
 --- Returns an iterator to the table sorted with the provided function, or sorted by value if no function was provided.

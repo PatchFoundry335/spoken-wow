@@ -59,16 +59,12 @@ local function errorhandler(err)
 end
 
 local function safecall(func, ...)
-    if type(func) ~= "function" then
-        return
-    end
-
-    local args = {...}
-    local n = select("#", ...)
-
-    return xpcall(function()
-        return func(unpack(args, 1, n))
-    end, errorhandler)
+	-- we check to see if the func is passed is actually a function here and don't error when it isn't
+	-- this safecall is used for optional functions like OnInitialize OnEnable etc. When they are not
+	-- present execution should continue without hinderance
+	if type(func) == "function" then
+		return xpcall(func, errorhandler, ...)
+	end
 end
 
 -- local functions that will be implemented further down

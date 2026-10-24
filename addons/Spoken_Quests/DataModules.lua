@@ -72,6 +72,11 @@ local LOAD_ALL_MODULES = true
 ---@field GossipFileLookupByNPCSex? table<number, table<number, table<string, string>>> Maps a split Creature ID, the sex it is drawn as (UnitSex) and a gossip line's hash to the file that sex hears
 ---@field QuestFileLookupByNPCSex? table<string, table<number, table<number, string>>> Maps a quest line's filename, its split giver's Creature ID and the sex it is drawn as to the file that sex hears
 ---@field NPCSexByNPCID? table<number, number> Maps every other speaking Creature ID to the sex (UnitSex) it is voiced as
+---@field GossipFileLookupByNPCBody? table<number, table<string, table<string, string>>> Maps a split Creature ID, the body it is drawn as ("gnome-female") and a gossip line's hash to the file that body hears
+---@field QuestFileLookupByNPCBody? table<string, table<number, table<string, string>>> Maps a quest line's filename, its split giver's Creature ID and the body it is drawn as to the file that body hears
+---@field FollowupLookupByNPCBody? table<number, table<number, table<string, string>>> Maps a split speaker's Creature ID, a follow-up's BroadcastText ID and the body it is drawn as to the file that body hears
+---@field NPCBodiesByNPCID? table<number, table<string, boolean>> Maps every Creature ID that greets to the bodies it is voiced as
+---@field BodyByModelFileID? table<number, string> Maps a character model's file id to the body it draws
 
 ---@class AvailableDataModule
 ---@field AddonName string Addon name
@@ -113,7 +118,7 @@ DataModules =
     -- anyway, which is the only cost a rename has.
     --
     -- The sound pack ships in five pieces, so this is a menu rather than a single answer: a
-    -- player picks their side plus the shared quests, or takes the complete pack. Only shown
+    -- player picks their side plus the shared quests, or takes them all. Only shown
     -- to somebody who has no pack at all - see EnumerateAddons, where having one silences the
     -- other four, since suggesting the Horde pack to an Alliance player who already installed
     -- theirs is noise.
@@ -127,31 +132,31 @@ DataModules =
         },
         {
             AddonName = "SpokenQuestsAudioAlliance",
-            Title = "Spoken Quests Audio: Alliance",
+            Title = "Spoken Audio: Quests - Alliance",
             ContentVersion = "2.2.0",
             RelevantAboveVersion = 0,
-            URL = "https://www.curseforge.com/wow/addons/spoken-quests-audio-alliance",
+            URL = "https://www.curseforge.com/wow/addons/spoken-audio-quests-alliance",
         },
         {
             AddonName = "SpokenQuestsAudioHorde",
-            Title = "Spoken Quests Audio: Horde",
+            Title = "Spoken Audio: Quests - Horde",
             ContentVersion = "2.2.0",
             RelevantAboveVersion = 0,
-            URL = "https://www.curseforge.com/wow/addons/spoken-quests-audio-horde",
+            URL = "https://www.curseforge.com/wow/addons/spoken-audio-quests-horde",
         },
         {
             AddonName = "SpokenQuestsAudioShared",
-            Title = "Spoken Quests Audio: Shared Quests",
+            Title = "Spoken Audio: Quests - Shared",
             ContentVersion = "2.2.0",
             RelevantAboveVersion = 0,
-            URL = "https://www.curseforge.com/wow/addons/spoken-quests-audio-shared",
+            URL = "https://www.curseforge.com/wow/addons/spoken-audio-quests-shared",
         },
         {
             AddonName = "SpokenQuestsAudioGossip",
-            Title = "Spoken Quests Audio: Gossip",
+            Title = "Spoken Audio: Gossip",
             ContentVersion = "2.2.0",
             RelevantAboveVersion = 0,
-            URL = "https://www.curseforge.com/wow/addons/spoken-quests-audio-gossip",
+            URL = "https://www.curseforge.com/wow/addons/spoken-audio-gossip",
         },
     },
 }
@@ -236,7 +241,8 @@ function DataModules:GetPackLabel(module)
         return label
     end
     local title = module and module.Title or ""
-    title = string.gsub(title, "Spoken Quests Audio: ", "")
+    -- "Spoken German Audio: Quests - Horde", or a pack built before that, "Spoken Quests Audio: Horde".
+    title = string.gsub(title, "^Spoken [^:]*Audio: ", "")
     return (string.gsub(title, "VoiceOver Data %- ", ""))
 end
 
@@ -433,7 +439,7 @@ function DataModules:GetModuleAddOnInfo(module)
 end
 
 local function replaceDoubleQuotes(text)
-    return string.gsub(text, '"', "'")
+    return string.gsub(text or "", '"', "'")
 end
 
 --- One of a module's text-keyed tables, and the client locale its keys are written in.
@@ -482,9 +488,10 @@ local function GossipLookupKey(soundData)
         soundData.name and (replaceDoubleQuotes(soundData.name))
 end
 
---- Whether any pack holds gossip for this speaker, whatever the text. Asked the moment a
---- gossip dialog opens, before its text can be trusted, to decide whether to silence the
---- NPC's greeting for a line that is coming.
+--- Whether a pack holds the audio of any of this speaker's gossip lines, whatever the text on
+--- screen. Asked the moment a gossip dialog opens, before its text can be trusted, to decide
+--- whether to silence the NPC's greeting for a line that is coming. The addon's own text names
+--- every NPC's lines, so it counts only where a pack has the file.
 ---@param soundData { unitGUID: string?, name: string?, unitIsObjectOrItem: boolean? }
 ---@return boolean
 function DataModules:HasGossipFor(soundData)
@@ -492,16 +499,83 @@ function DataModules:HasGossipFor(soundData)
     if not table or npc == nil then
         return false
     end
-    if GossipText and GossipText[table] and GossipText[table][npc] then
+    local probe = { event = Enums.SoundEvent.Gossip, unitGUID = soundData.unitGUID, name = soundData.name,
+        unitIsObjectOrItem = soundData.unitIsObjectOrItem }
+    local function Voiced(lines)
+        for text in pairs(lines or {}) do
+            probe.text = text
+            if self:PrepareSound(probe) then
+                return true
+            end
+        end
+        return false
+    end
+    if Voiced(GossipText and GossipText[table] and GossipText[table][npc]) then
         return true
     end
     for _, module in self:GetModules() do
         local data = TextLookup(module, table)
-        if data and data[npc] then
+        if Voiced(data and data[npc]) then
             return true
         end
     end
     return false
+end
+
+-- Measured on the corpus: a rewording of the same line scores 0.8 or more, while an NPC's
+-- other variants (another profession's or faction's) mostly score under 0.6.
+local GOSSIP_MATCH_FLOOR = 0.7
+
+--- A line's words as they are compared: lower case, ASCII punctuation as spaces. Bytes past
+--- ASCII are kept, so another alphabet's words compare whole.
+local function Words(text)
+    return (string.gsub(string.lower(text), "%p", " "))
+end
+
+--- The keys still hold the server's tokens ($N, $g...), so each is filled in for this player
+--- before it is compared.
+local function ClosestGossipLine(shown, lines)
+    local best = FuzzySearchBestKeys(Words(shown), lines, function(text)
+        return Words(Utils:FillPlayerTokens(text))
+    end)
+    return best and best.similarity >= GOSSIP_MATCH_FLOOR and best or nil
+end
+
+--- Every text a table of text as a client shows it holds under `key`, mapped to its file, into
+--- `into`: the tables written in the client's own locale when `inClientLocale`, the rest
+--- otherwise. That locale is not the language the player chose to hear: an English client
+--- playing a Portuguese pack still shows English text. The file is the line's, not the
+--- recording's, so whichever table found it, PrepareSound looks for the clip in the voice
+--- language.
+---
+--- GossipText (Gossip/<locale>.lua, built only on a client in that locale) is this addon's own
+--- copy of every line's text in the client's locale, so it is asked before any pack's.
+local function CollectTexts(table, key, inClientLocale, into)
+    local client = Language:GetClientLanguage()
+    local own = inClientLocale and GossipText and GossipText[table]
+    if own and own[key] then
+        for text, file in pairs(own[key]) do
+            into[text] = file
+        end
+    end
+    for _, module in DataModules:GetModules() do
+        local data, locale = TextLookup(module, table)
+        if data and (locale == client) == inClientLocale and data[key] then
+            for text, file in pairs(data[key]) do
+                into[text] = into[text] or file -- module priority: the first pack's entry stands
+            end
+        end
+    end
+    return into
+end
+
+--- The file of the text on screen among `entries`: its exact key, else the closest above the floor.
+local function MatchShown(text, entries)
+    if entries[text] then
+        return entries[text]
+    end
+    local best = ClosestGossipLine(text, entries)
+    return best and best.value or nil
 end
 
 ---@param soundData SoundData
@@ -512,47 +586,17 @@ function DataModules:GetNPCGossipTextHash(soundData)
         return
     end
     local text = soundData.text
-
-    local text_entries = {}
-
-    -- A gossip table maps the NPC's text *as a client shows it* to the line's hash, so the
-    -- tables that can match exactly are the ones written in the client's own locale --
-    -- which is not the language the player chose to hear: an English client playing a
-    -- Portuguese pack still shows English text. The hash is the line's, not the recording's,
-    -- so whichever table found it, PrepareSound looks for the clip in the voice language.
-    --
+    -- An NPC whose text varies by who asks may lack the variant on screen. Playing nothing then
+    -- lets the window offer Contribute. HasGossipFor asks with each key itself, so an exact key
+    -- skips scoring every line again.
+    local text_entries = CollectTexts(table, npc, true, {})
+    if next(text_entries) ~= nil then
+        return MatchShown(text, text_entries)
+    end
     -- Only when no pack in the client's locale knows this NPC are the rest searched. That is
     -- what every non-English client has always done with English packs, and it mostly works:
     -- most NPCs have a single line, and the fuzzy match lands on it whatever it is shown in.
-    --
-    -- GossipText (Gossip/<locale>.lua, built only on a client in that locale) is this addon's
-    -- own copy of every line's text in the client's locale, so it is asked before any pack's.
-    local client = Language:GetClientLanguage()
-    local function collect(inClientLocale)
-        local own = inClientLocale and GossipText and GossipText[table]
-        if own and own[npc] then
-            for text, hash in pairs(own[npc]) do
-                text_entries[text] = hash
-            end
-        end
-        for _, module in self:GetModules() do
-            local data, locale = TextLookup(module, table)
-            if data and (locale == client) == inClientLocale then
-                local npc_gossip_table = data[npc]
-                if npc_gossip_table then
-                    for text, hash in pairs(npc_gossip_table) do
-                        text_entries[text] = text_entries[text] or
-                            hash -- Respect module priority, don't overwrite the entry if there is already one
-                    end
-                end
-            end
-        end
-    end
-    collect(true)
-    if next(text_entries) == nil then
-        collect(false)
-    end
-
+    CollectTexts(table, npc, false, text_entries)
     local best_result = FuzzySearchBestKeys(text, text_entries)
     return best_result and best_result.value
 end
@@ -698,12 +742,27 @@ function DataModules:GetObjectName(type, id)
     end
 end
 
+--- A quest moment's file: `{questID}-{event}`, or, where the moment has more than one wording
+--- in the client's language, the wording the screen shows, matched as gossip is and none below
+--- the floor. Text in another language cannot be compared to the screen, so a client with no
+--- wordings in its own plays the moment's file, as it always has.
+local function QuestFile(soundData, event)
+    local stem = format("%d-%s", soundData.questID, event)
+    -- An empty text is what a quest reader answers when it has none to give.
+    local text = soundData.text ~= "" and soundData.text or nil
+    local wordings = text and CollectTexts("QuestWordingLookup", stem, true, {})
+    if not wordings or next(wordings) == nil then
+        return stem
+    end
+    return MatchShown(text, wordings)
+end
+
 ---@type table<SoundEvent, fun(soundData: SoundData): string|nil>
 local getFileNameForEvent =
 {
-    [Enums.SoundEvent.QuestAccept]   = function(soundData) return format("%d-%s", soundData.questID, "accept") end,
-    [Enums.SoundEvent.QuestProgress] = function(soundData) return format("%d-%s", soundData.questID, "progress") end,
-    [Enums.SoundEvent.QuestComplete] = function(soundData) return format("%d-%s", soundData.questID, "complete") end,
+    [Enums.SoundEvent.QuestAccept]   = function(soundData) return QuestFile(soundData, "accept") end,
+    [Enums.SoundEvent.QuestProgress] = function(soundData) return QuestFile(soundData, "progress") end,
+    [Enums.SoundEvent.QuestComplete] = function(soundData) return QuestFile(soundData, "complete") end,
     [Enums.SoundEvent.QuestGreeting] = function(soundData) return DataModules:GetNPCGossipTextHash(soundData) end,
     [Enums.SoundEvent.Gossip]        = function(soundData) return DataModules:GetNPCGossipTextHash(soundData) end,
 }
@@ -735,37 +794,53 @@ function DataModules:GetQuestFileForGiver(soundData)
     end
 end
 
---- The creature a GUID names, its id and the sex it is drawn as, for the tables keyed on both.
+--- The first installed pack's `tableName[key]`, or nil where none has it.
+---@param tableName string
+---@param key any
+---@return any
+local function FirstIn(tableName, key)
+    for _, module in DataModules:GetModules() do
+        local value = module[tableName] and module[tableName][key]
+        if value then
+            return value
+        end
+    end
+end
+
+--- The creature a GUID names, its id, the sex it is drawn as and its body where its model is in.
 ---@param soundData SoundData
 ---@return number|nil id
 ---@return number|nil sex
-local function CreatureSex(soundData)
+---@return string|nil body
+local function CreatureBody(soundData)
     local id = Utils:GetCreatureIDFromGUID(soundData.unitGUID)
     if not id then
         return
     end
     soundData.npcSex = soundData.npcSex or Utils:GetSexForGUID(soundData.unitGUID)
-    return id, soundData.npcSex
+    soundData.npcBody = soundData.npcBody or Utils:GetBodyForGUID(soundData.unitGUID)
+    return id, soundData.npcSex, soundData.npcBody
 end
 
---- The file a line is in for the sex its NPC is drawn as, for an NPC split by sex.
----@param soundData SoundData
----@param line string The line's own file
+--- A line's file in the `...ByNPCBody` or `...ByNPCSex` tables (`kind`), for creature `id` drawn
+--- as `key`: quest tables are `[line][id][key]`, gossip tables `[id][key][line]`.
+---@param kind "Body"|"Sex"
+---@param id number
+---@param key string|number
+---@param line string
+---@param quest boolean
 ---@return string|nil
-function DataModules:GetFileForSex(soundData, line)
-    local id, sex = CreatureSex(soundData)
-    if not id or not sex then
-        return
-    end
-    local quest = Enums.SoundEvent:IsQuestEvent(soundData.event)
-    for _, module in self:GetModules() do
+local function FileFor(kind, id, key, line, quest)
+    for _, module in DataModules:GetModules() do
         local file
         if quest then
-            local byGiver = module.QuestFileLookupByNPCSex and module.QuestFileLookupByNPCSex[line]
-            file = byGiver and byGiver[id] and byGiver[id][sex]
+            local byGiver = module["QuestFileLookupByNPC" .. kind]
+            byGiver = byGiver and byGiver[line]
+            file = byGiver and byGiver[id] and byGiver[id][key]
         else
-            local bySex = module.GossipFileLookupByNPCSex and module.GossipFileLookupByNPCSex[id]
-            file = bySex and bySex[sex] and bySex[sex][line]
+            local byKey = module["GossipFileLookupByNPC" .. kind]
+            byKey = byKey and byKey[id]
+            file = byKey and byKey[key] and byKey[key][line]
         end
         if file then
             return file
@@ -773,27 +848,56 @@ function DataModules:GetFileForSex(soundData, line)
     end
 end
 
---- Whether an unsplit NPC is drawn as the sex its voice is not. Its line still plays, and the
---- site has to hear about it to give the other sex a voice.
+--- The file a line is in for the body its NPC is drawn as, for an NPC split by body: the body's
+--- where its model is in, else its sex's, which each pack names for addons that cannot see a body.
+---@param soundData SoundData
+---@param line string The line's own file
+---@return string|nil
+function DataModules:GetFileForBody(soundData, line)
+    local id, sex, body = CreatureBody(soundData)
+    if not id then
+        return
+    end
+    local quest = Enums.SoundEvent:IsQuestEvent(soundData.event)
+    return body and FileFor("Body", id, body, line, quest)
+        or sex and FileFor("Sex", id, sex, line, quest)
+        or nil
+end
+
+--- Whether a creature is drawn as a body its voice is not. Its line still plays, and the site has
+--- to hear about it to give that body a voice. Where the model is not in, or no pack lists the
+--- creature's bodies (a pack built before them), only the sex is compared.
 ---@param soundData SoundData
 ---@return boolean
-function DataModules:IsOtherSex(soundData)
-    local id, sex = CreatureSex(soundData)
+function DataModules:IsOtherBody(soundData)
+    local id, sex, body = CreatureBody(soundData)
     if not id or (sex ~= 2 and sex ~= 3) then
         return false
     end
-    for _, module in self:GetModules() do
-        if module.GossipFileLookupByNPCSex and module.GossipFileLookupByNPCSex[id] then
-            return false
-        end
+    local bodies = body and FirstIn("NPCBodiesByNPCID", id)
+    if bodies then
+        return not bodies[body]
     end
-    for _, module in self:GetModules() do
-        local voiced = module.NPCSexByNPCID and module.NPCSexByNPCID[id]
-        if voiced then
-            return voiced ~= sex
-        end
+    if FirstIn("GossipFileLookupByNPCSex", id) then
+        return false
     end
-    return false
+    local voiced = FirstIn("NPCSexByNPCID", id)
+    return voiced ~= nil and voiced ~= sex
+end
+
+--- Whether a creature is split by body in any installed pack: the ones worth loading a model for
+--- before their dialog opens.
+---@param id number
+---@return boolean
+function DataModules:IsSplit(id)
+    return (FirstIn("GossipFileLookupByNPCBody", id) or FirstIn("GossipFileLookupByNPCSex", id)) ~= nil
+end
+
+--- Whether any installed pack lists a creature's bodies, so that its model is worth reading.
+---@param id number
+---@return boolean
+function DataModules:HasBodies(id)
+    return FirstIn("NPCBodiesByNPCID", id) ~= nil
 end
 
 --- A greeting's table names its speaker's own voice's file, `{hash}-{voice}`: the line's own
@@ -821,14 +925,14 @@ function DataModules:PrepareSound(soundData)
     soundData.fileName = getFileNameForEvent[soundData.event](soundData)
 
     if soundData.fileName == nil then
-        return false, "no file name for it (no quest ID, or a greeting no pack's text matches)"
+        return false, "no file name for it (no quest ID, or a text no pack's wording or greeting matches)"
     end
 
     -- A quest given by NPCs of different voices is a file per voice: this giver's own first,
     -- then the line's, in each language before the next, so a voice no pack in the player's
     -- language has yet plays the line in that language rather than the voice in another.
     local line = soundData.fileName
-    local own = self:GetFileForSex(soundData, line) or self:GetQuestFileForGiver(soundData)
+    local own = self:GetFileForBody(soundData, line) or self:GetQuestFileForGiver(soundData)
     soundData.fileName = own or line
     if self:ResolveSoundFile(soundData, own and line or GreetingOfVoice(line)) then
         return true

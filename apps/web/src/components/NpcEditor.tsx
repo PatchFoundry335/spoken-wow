@@ -12,6 +12,7 @@ import { useCallback, useMemo, useState } from "react";
 import FilterChip, { type ChipOption } from "@/components/FilterChip";
 import { LiteButton, ROW_BUTTON, ROW_LINE } from "@/components/LiteControls";
 import { useLang } from "@/components/LangProvider";
+import { useHistoryMode } from "@/components/useHistoryMode";
 import { useRosterEdits } from "@/components/RosterEdits";
 import SortHeader from "@/components/SortHeader";
 import SpeakerCell, { type SpeakerAnswer } from "@/components/SpeakerCell";
@@ -21,12 +22,12 @@ import { Input } from "@/components/ui/input";
 import Pagination from "@/components/Pagination";
 import ClientSelect from "@/components/ClientSelect";
 import { clientFilterOf, DEFAULT_CLIENT_FILTER, matchesClient, type ClientFamily, type ClientFilter } from "@/lib/contributions/client";
-import { flavorOptionsFor, summaryFromResolution, summaryFromSex } from "@/lib/contributions/speaker";
+import { flavorOptionsFor, summaryFromResolution, summaryFromBody } from "@/lib/contributions/speaker";
 import type { Roster, RosterData } from "@/lib/voices/roster";
 import type { NpcSummary } from "@/lib/contributions/triage";
 import { localeHref } from "@/lib/lang";
-import { isProvenance, PROVENANCES, sexOf, type NpcRowKind, type Provenance } from "@/lib/npc/npc";
-import type { NpcResolution, NpcSexAnswer } from "@/lib/npc/store";
+import { isProvenance, PROVENANCES, sexOf, type NpcRowKind, type Provenance, type Sex } from "@/lib/npc/npc";
+import type { NpcResolution, NpcBodyAnswer } from "@/lib/npc/store";
 import { wowheadEntityUrl, wowheadForeverUrl } from "@/lib/wowhead";
 
 function key(npcKind: NpcRowKind | null, npcId: number): string {
@@ -116,6 +117,25 @@ function progressOf(npc: NpcSummary, roster: Roster): Progress {
   return npc.doubtful ? "doubtful" : "finished";
 }
 
+/**
+ * Whether the NPC, or any body it is split into, is of this type or read by this voice. Each
+ * filter matches on its own when the other is unset.
+ */
+function matchesSpeaker(
+  npc: NpcSummary,
+  bodies: NpcBodyAnswer[],
+  roster: Roster,
+  type: string | undefined,
+  voice: string | undefined,
+): boolean {
+  if (!type && !voice) return true;
+  return [npc, ...bodies].some(
+    (answer) =>
+      (!type || answer.race === type) &&
+      (!voice || roster.voiceFor(answer.race, answer.gender, answer.flavor) === voice),
+  );
+}
+
 /** A voice answer, or a name: the route saves each on its own. */
 type Answer = SpeakerAnswer & { npcName?: string };
 
@@ -167,63 +187,98 @@ function NameCell({
 }
 
 /**
- * Where an NPC's lines can be looked up: both explorers, and both contribution sections. The
- * contribution links carry this page's client filter, since the two pages read it the same way.
+ * Where an NPC's lines can be looked up: the explorer and the contributions. The contributions
+ * link carries this page's client filter, since the two pages read it the same way.
  */
 function lookups(npcId: number, client: ClientFilter): { label: string; path: string; where: string }[] {
   const search = `q=${npcId}&filter=npc`;
   const contributed = client === DEFAULT_CLIENT_FILTER ? search : `${search}&client=${client}`;
   return [
     { label: "Q", path: `/quests?${search}`, where: "the quests explorer" },
-    { label: "G", path: `/gossip?${search}`, where: "the gossip explorer" },
     { label: "CQ", path: `/contributions/quests?${contributed}`, where: "quest contributions" },
-    { label: "CG", path: `/contributions/gossip?${contributed}`, where: "gossip contributions" },
   ];
 }
 
-const SEX_LABELS: Record<number, string> = { 2: "As a man", 3: "As a woman" };
+const SEX_WORDS: Record<number, string> = { 2: "man", 3: "woman" };
 
-/** A creature's split by sex: each sex's answer with its own Edit, and Split or Unsplit. */
-function SexCells({
+/** "As a gnome woman": what a body row is labelled with. */
+function bodyLabel(answer: NpcBodyAnswer): string {
+  return `As a ${answer.race} ${SEX_WORDS[answer.sex]}`;
+}
+
+/** A body the admin is adding: a type and a sex, then Add. */
+function AddBody({ roster, busy, onAdd }: { roster: Roster; busy: boolean; onAdd: (race: string, sex: Sex) => void }) {
+  const [race, setRace] = useState("");
+  const [sex, setSex] = useState<Sex>(2);
+  const races = roster.races.filter((type) => !roster.isGenderless(type));
+  return (
+    <form className={ROW_LINE} onSubmit={(event) => { event.preventDefault(); if (race) onAdd(race, sex); }}>
+      <select aria-label="Body type" value={race} onChange={(event) => setRace(event.target.value)}
+        className="border-input bg-background h-7 rounded-md border px-1">
+        <option value="">Add a body…</option>
+        {races.map((type) => <option key={type} value={type}>{type}</option>)}
+      </select>
+      <select aria-label="Body sex" value={sex} onChange={(event) => setSex(Number(event.target.value) as Sex)}
+        className="border-input bg-background h-7 rounded-md border px-1">
+        <option value={2}>man</option>
+        <option value={3}>woman</option>
+      </select>
+      <LiteButton type="submit" className={ROW_BUTTON} disabled={busy || !race}>Add</LiteButton>
+    </form>
+  );
+}
+
+/** A creature's split by body: each body's answer with its own Edit and Remove, Split by sex, Add, Unsplit. */
+function BodyCells({
   npc,
-  sexes,
+  bodies,
   roster,
   edits,
   busy,
   onPost,
 }: {
   npc: NpcSummary;
-  sexes: NpcSexAnswer[];
+  bodies: NpcBodyAnswer[];
   roster: Roster;
   edits: ReturnType<typeof useRosterEdits>;
   busy: boolean;
   onPost: (body: Record<string, unknown>) => void;
 }) {
   if (npc.npcKind !== "creature" || !npc.race || sexOf(npc.gender) === null) return null;
-  if (!sexes.length) {
+  const add = <AddBody roster={roster} busy={busy} onAdd={(race, sex) => onPost({ action: "add", race, sex })} />;
+  if (!bodies.length) {
     return (
-      <LiteButton className={`${ROW_BUTTON} mt-1`} disabled={busy} onClick={() => onPost({ action: "split" })}
-        title="Voice every line this NPC speaks once as a man and once as a woman">
-        Split by sex
-      </LiteButton>
+      <div className="mt-1 space-y-1">
+        <LiteButton className={ROW_BUTTON} disabled={busy} onClick={() => onPost({ action: "split" })}
+          title="Voice every line this NPC speaks once as a man and once as a woman">
+          Split by sex
+        </LiteButton>
+        {add}
+      </div>
     );
   }
   return (
     <div className="mt-1 space-y-1 border-l pl-2">
-      {sexes.map((answer) => (
-        <div key={answer.sex} className={ROW_LINE}>
-          <span className="text-muted-foreground w-20 shrink-0">{SEX_LABELS[answer.sex]}</span>
+      {bodies.map((answer) => (
+        <div key={`${answer.race}:${answer.sex}`} className={ROW_LINE}>
+          <span className="text-muted-foreground w-36 shrink-0">{bodyLabel(answer)}</span>
           <SpeakerCell
-            key={`${answer.provenance}:${answer.race}:${answer.flavor}:${answer.doubtful}`}
-            npc={summaryFromSex(npc, answer, roster)}
+            key={`${answer.provenance}:${answer.flavor}:${answer.doubtful}`}
+            npc={summaryFromBody(npc, answer, roster)}
             roster={roster}
             edits={edits}
             readOnly={false}
             busy={busy}
-            onSave={(next) => onPost({ sex: answer.sex, race: next.race ?? answer.race, flavor: next.flavor ?? answer.flavor, doubtful: next.doubtful ?? false })}
+            lockType
+            onSave={(next) => onPost({ race: answer.race, sex: answer.sex, flavor: next.flavor ?? answer.flavor, doubtful: next.doubtful ?? false })}
           />
+          <LiteButton className={ROW_BUTTON} disabled={busy} onClick={() => onPost({ action: "remove", race: answer.race, sex: answer.sex })}
+            title="Stop voicing this body on its own">
+            Remove
+          </LiteButton>
         </div>
       ))}
+      {add}
       <LiteButton className={ROW_BUTTON} disabled={busy} onClick={() => onPost({ action: "unsplit" })}
         title="Voice every line this NPC speaks in its one answer again">
         Unsplit
@@ -238,9 +293,9 @@ export default function NpcEditor({
 }: {
   /**
    * Each with the client family whose guess filed it, null for one only the extract names, and
-   * its sexes where it is split by sex.
+   * its bodies where it is split by body.
    */
-  initial: (NpcSummary & { client: ClientFamily | null; sexes: NpcSexAnswer[] })[];
+  initial: (NpcSummary & { client: ClientFamily | null; bodies: NpcBodyAnswer[] })[];
   /** The roster, for SpeakerCell's pickers, and grown by their "New" entries. */
   roster: RosterData;
 }) {
@@ -250,17 +305,22 @@ export default function NpcEditor({
   const pathname = usePathname();
   const params = useSearchParams();
   // The filters live in the URL, so a reload or a shared link keeps the view. Written with
-  // history.replaceState rather than router.replace, for zones/Explorer.tsx's reason: the rows
+  // native history calls rather than the router, for zones/Explorer.tsx's reason: the rows
   // are all here already, and Next re-renders useSearchParams() from a native history call.
   const query = params.get("q") ?? "";
   const speakerParam = params.get("speaker");
   const provenance = isProvenance(speakerParam) ? speakerParam : undefined;
   const progressParam = params.get("progress");
   const progress = isProgress(progressParam) ? progressParam : undefined;
+  // Taken as written rather than checked against the roster: FilterChip shows an unknown value
+  // as itself, and it matches nothing.
+  const type = params.get("type") || undefined;
+  const voice = params.get("voice") || undefined;
   // Absent is the default bin, so "all" is written out.
   const client = clientFilterOf(params.get("client"));
   const sortValue = params.get("sort");
   const sort = useMemo(() => sortOf(sortValue), [sortValue]);
+  const historyMode = useHistoryMode();
   const setParam = useCallback(
     (name: string, value: string | undefined) => {
       const search = new URLSearchParams(params.toString());
@@ -269,16 +329,19 @@ export default function NpcEditor({
       // A narrower view starts again from its first page: the one it was on may not exist.
       if (name !== "page") search.delete("page");
       const next = search.toString();
-      window.history.replaceState(null, "", next ? `${pathname}?${next}` : pathname);
+      const url = next ? `${pathname}?${next}` : pathname;
+      // The search box writes per keystroke; see useHistoryMode.
+      if (historyMode(name === "q") === "push") window.history.pushState(null, "", url);
+      else window.history.replaceState(null, "", url);
     },
-    [params, pathname],
+    [historyMode, params, pathname],
   );
   /** What this session saved, over the server's rows, keyed by NPC. */
   const [saved, setSaved] = useState<Record<string, NpcSummary>>({});
   /** Each split this session saved, over the server's, keyed by NPC. */
-  const [savedSexes, setSavedSexes] = useState<Record<string, NpcSexAnswer[]>>({});
-  const initialSexes = useMemo(
-    () => new Map(initial.filter((row) => row.sexes.length).map((row) => [key(row.npcKind, row.npcId), row.sexes])),
+  const [savedBodies, setSavedBodies] = useState<Record<string, NpcBodyAnswer[]>>({});
+  const initialBodies = useMemo(
+    () => new Map(initial.filter((row) => row.bodies.length).map((row) => [key(row.npcKind, row.npcId), row.bodies])),
     [initial],
   );
   const [busy, setBusy] = useState<string | null>(null);
@@ -323,11 +386,11 @@ export default function NpcEditor({
     [post],
   );
 
-  const postSex = useCallback(async (npc: NpcSummary, body: Record<string, unknown>) => {
+  const postBody = useCallback(async (npc: NpcSummary, body: Record<string, unknown>) => {
     const k = key(npc.npcKind, npc.npcId);
     setBusy(k);
     setFailed(null);
-    const response = await fetch("/api/npcs/sex", {
+    const response = await fetch("/api/npcs/body", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...body, npcKind: npc.npcKind, npcId: npc.npcId }),
@@ -337,8 +400,8 @@ export default function NpcEditor({
       setFailed(k);
       return;
     }
-    const { sexes } = (await response.json()) as { sexes: NpcSexAnswer[] };
-    setSavedSexes((current) => ({ ...current, [k]: sexes }));
+    const { bodies } = (await response.json()) as { bodies: NpcBodyAnswer[] };
+    setSavedBodies((current) => ({ ...current, [k]: bodies }));
   }, []);
 
   /**
@@ -380,8 +443,14 @@ export default function NpcEditor({
       )
       .filter((npc) => !provenance || npc.provenance === provenance)
       .filter((npc) => !progress || progressOf(npc, roster) === progress)
+      .filter((npc) => {
+        const k = key(npc.npcKind, npc.npcId);
+        return matchesSpeaker(npc, savedBodies[k] ?? initialBodies.get(k) ?? [], roster, type, voice);
+      })
       .sort(compare(sort));
-  }, [initial, client, saved, query, provenance, progress, sort, roster]);
+  }, [initial, client, saved, savedBodies, initialBodies, query, provenance, progress, type, voice, sort, roster]);
+  const typeOptions = useMemo(() => roster.races.map((race) => ({ value: race, label: race })), [roster]);
+  const voiceOptions = useMemo(() => roster.voiceNames.map((name) => ({ value: name, label: name })), [roster]);
 
   // A page at a time: every row is a SpeakerCell with its own selects, and all of them at once
   // made the first load and every tick slow.
@@ -432,6 +501,8 @@ export default function NpcEditor({
           options={PROGRESS_CHIP_OPTIONS}
           onChange={(next) => setParam("progress", next)}
         />
+        <FilterChip label="type" value={type} options={typeOptions} onChange={(next) => setParam("type", next)} />
+        <FilterChip label="voice" value={voice} options={voiceOptions} onChange={(next) => setParam("voice", next)} />
         <span className="text-muted-foreground text-xs">
           {rows.length} of {initial.length}
         </span>
@@ -570,13 +641,13 @@ export default function NpcEditor({
                       busy={busy === k || bulk !== null}
                       onSave={(answer) => void save(npc, answer)}
                     />
-                    <SexCells
+                    <BodyCells
                       npc={npc}
-                      sexes={savedSexes[k] ?? initialSexes.get(k) ?? []}
+                      bodies={savedBodies[k] ?? initialBodies.get(k) ?? []}
                       roster={roster}
                       edits={edits}
                       busy={busy === k || bulk !== null}
-                      onPost={(body) => void postSex(npc, body)}
+                      onPost={(body) => void postBody(npc, body)}
                     />
                     {failed === k ? (
                       <p className="text-destructive mt-1">That didn&apos;t go through -- try again.</p>

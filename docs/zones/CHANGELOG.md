@@ -9,6 +9,12 @@ is the pack's, and `scripts/zones/release.sh` matches on the kind as well as the
 section with no kind in its heading is the addon's. A language's pack numbers itself too, from
 2.0.0 in step with the English pack (Spanish (AL) shipped first, as 1.0.0), and its sections are headed by its release tag: `## <version> — zones-audio-esMX`.
 
+## Unreleased
+
+- **The sound packs are called Spoken Audio: Places** in the AddOns list, after the module that
+  reads them, and a language's is Spoken German Audio: Places and so on. Their folders keep their
+  names, so nothing needs reinstalling.
+
 ## 3.0.0 — 2026-10-05
 
 - **Spoken Zones is now part of Spoken**, and this download no longer carries the addon. It
@@ -79,6 +85,10 @@ section with no kind in its heading is the addon's. A language's pack numbers it
 - **The first Traditional Chinese sound pack**, `SpokenZonesAudio_zhTW`: every zone and subzone
   Spoken Zones has lore for, read aloud in Traditional Chinese. It plays only while Spoken Zones is
   showing Traditional Chinese text, and installs beside the English pack rather than over it.
+
+## 2.1.1 — zones-audio-deDE — 2026-10-13
+
+- 1 narration re-recorded: Thunder Ridge, in Durotar. Install over the previous version.
 
 ## 2.1.0 — zones-audio-deDE — 2026-10-08
 
