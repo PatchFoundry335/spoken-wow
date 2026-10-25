@@ -1,18 +1,18 @@
-# Spoken 3.5.1 — WotLK 3.3.5a Compatibility Port
+# Spoken 3.5.1.1 — WotLK 3.3.5a Compatibility Port
 
 > **Unofficial compatibility port** of [Spoken by rusty-key](https://github.com/rusty-key/spoken-wow) for the original World of Warcraft: Wrath of the Lich King **3.3.5a (build 12340)** client.
 
 ## Download
 
-**[Download Spoken 3.5.1 for WotLK 3.3.5a](https://github.com/PatchFoundry335/spoken-wow/releases/download/wotlk-v3.5.1/Spoken-v3.5.1-WotLK-3.3.5a.zip)**
+**[Download Spoken 3.5.1.1 for WotLK 3.3.5a](https://github.com/PatchFoundry335/spoken-wow/releases/download/wotlk-v3.5.1.1/Spoken-v3.5.1.1-WotLK-3.3.5a.zip)**
 
-[View release notes](https://github.com/PatchFoundry335/spoken-wow/releases/tag/wotlk-v3.5.1)
+[View release notes](https://github.com/PatchFoundry335/spoken-wow/releases/tag/wotlk-v3.5.1.1)
 
 Use the release ZIP for installation, **not** GitHub's automatically generated source-code ZIP. The repository contains development tools and files for multiple WoW clients.
 
 ## Included addons
 
-The 3.5.1 release includes four folders, all ported to WotLK 3.3.5a:
+The 3.5.1.1 release includes four folders, all ported to WotLK 3.3.5a:
 
 | Folder | Purpose |
 | --- | --- |
@@ -25,7 +25,7 @@ These are the current module names. Earlier addon folders such as `Spoken_Zones`
 
 ## Installation
 
-1. Download the [WotLK 3.5.1 release ZIP](https://github.com/PatchFoundry335/spoken-wow/releases/download/wotlk-v3.5.1/Spoken-v3.5.1-WotLK-3.3.5a.zip).
+1. Download the [WotLK 3.5.1.1 release ZIP](https://github.com/PatchFoundry335/spoken-wow/releases/download/wotlk-v3.5.1.1/Spoken-v3.5.1.1-WotLK-3.3.5a.zip).
 2. Close World of Warcraft.
 3. Remove older Spoken **addon module folders** before replacing them. Keep separately installed audio packs.
 4. Extract the ZIP directly into `World of Warcraft/Interface/AddOns/`.
@@ -77,7 +77,7 @@ All four modules, settings, and the Compendium have been tested in-game on WotLK
 
 | Branch | Description |
 | --- | --- |
-| [`wotlk-3.5.1`](https://github.com/PatchFoundry335/spoken-wow/tree/wotlk-3.5.1) | Current 3.5.1 compatibility port |
+| [`wotlk-3.5.1`](https://github.com/PatchFoundry335/spoken-wow/tree/wotlk-3.5.1) | Current 3.5.1.1 compatibility port |
 | [`wotlk-3.3.5a`](https://github.com/PatchFoundry335/spoken-wow/tree/wotlk-3.3.5a) | Previous WotLK compatibility port |
 
 This is a compatibility fork rather than a clean merge of upstream Git history. GitHub's ahead/behind commit counts reflect that history and do not, by themselves, indicate whether the port includes current addon files.
