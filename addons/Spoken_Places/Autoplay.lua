@@ -555,7 +555,7 @@ end
 
 local function OnCinematicStart()
 	RecheckForCinematic()
-	C_Timer.After(0, RecheckForCinematic)
+	LibStub("AceTimer-3.0"):ScheduleTimer(RecheckForCinematic, 0)
 end
 
 -- The payload is not in the same position across those events: CHAT_MSG_* put the
@@ -619,7 +619,7 @@ function SpokenZones:SetupAutoplay()
 		-- player who watched it to the end arrived after the last attempt and was greeted
 		-- by nothing. The attempts start counting once it is over.
 		if CinematicUp() then
-			C_Timer.After(LOGIN_SEED_DELAY, seed)
+			LibStub("AceTimer-3.0"):ScheduleTimer(seed, LOGIN_SEED_DELAY)
 			return
 		end
 		attempts = attempts + 1
@@ -630,10 +630,10 @@ function SpokenZones:SetupAutoplay()
 		-- duplicate, so the spawn area cannot end up queued by both.
 		NarrateUnheard()
 		if not settled and attempts < LOGIN_SEED_ATTEMPTS then
-			C_Timer.After(LOGIN_SEED_DELAY, seed)
+			LibStub("AceTimer-3.0"):ScheduleTimer(seed, LOGIN_SEED_DELAY)
 		end
 	end
-	C_Timer.After(LOGIN_SEED_DELAY, seed)
+	LibStub("AceTimer-3.0"):ScheduleTimer(seed, LOGIN_SEED_DELAY)
 end
 
 -- Reports whether the client defined the strings this feature is built on, so a

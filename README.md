@@ -54,6 +54,14 @@ Make sure there is no extra outer directory between `AddOns/` and these four fol
 
 For audio packs, see the [upstream Spoken releases](https://github.com/rusty-key/spoken-wow/releases) and CurseForge listings for [quests](https://www.curseforge.com/wow/addons/spoken-quests-audio-all), [places](https://www.curseforge.com/wow/addons/spoken-audio-places), and [readables](https://www.curseforge.com/wow/addons/spoken-audio-readables). Packs intended for newer clients are not necessarily compatible with original WotLK 3.3.5a.
 
+**Important for WotLK 3.3.5a:** Separately downloaded audio packs may
+require adjustments to their `.toc` files before they work with this client.
+
+See the [Audio Pack Compatibility Guide](docs/AUDIO-PACKS-3.3.5a.md)
+for instructions covering interface versions and file path separators.
+These adjustments are especially important for Spoken Places and
+Spoken Readables. No audio files need to be modified.
+
 ## Features in this port
 
 - Voiced quest dialogue and NPC gossip
